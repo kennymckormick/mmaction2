@@ -910,6 +910,91 @@ class RawFrameDecode(object):
 
 
 @PIPELINES.register_module()
+class RawRGBFlowDecode(object):
+    """Load and decode frames with given indices.
+
+    Required keys are "frame_dir", "filename_tmpl" and "frame_inds",
+    added or modified keys are "imgs", "img_shape" and "original_shape".
+
+    Args:
+        io_backend (str): IO backend where frames are stored. Default: 'disk'.
+        decoding_backend (str): Backend used for image decoding.
+            Default: 'cv2'.
+        kwargs (dict, optional): Arguments for FileClient.
+    """
+
+    def __init__(self, io_backend='disk', decoding_backend='cv2', **kwargs):
+        self.io_backend = io_backend
+        self.decoding_backend = decoding_backend
+        self.kwargs = kwargs
+        self.file_client = None
+
+    def __call__(self, results):
+        """Perform the ``RawFrameDecode`` to pick frames given indices.
+
+        Args:
+            results (dict): The resulting dict to be modified and passed
+                to the next transform in pipeline.
+        """
+        mmcv.use_backend(self.decoding_backend)
+
+        directory = results['frame_dir']
+        filename_tmpl = results['filename_tmpl']
+        modality = results['modality']
+        assert modality == 'RGBFlow'
+
+        if self.file_client is None:
+            self.file_client = FileClient(self.io_backend, **self.kwargs)
+
+        imgs = list()
+
+        if results['frame_inds'].ndim != 1:
+            results['frame_inds'] = np.squeeze(results['frame_inds'])
+
+        offset = results.get('offset', 0)
+        # Only for trimmed video recognition
+        assert offset == 0
+
+        for frame_idx in results['frame_inds']:
+            frame_idx += offset
+            # flow frame idx may be different from RGB index
+            flow_frame_idx = (
+                frame_idx - results['start_index']
+            ) / results['total_frames'] * results['flow_total_frames']
+            flow_frame_idx = int(flow_frame_idx)
+
+            # load RGB frame
+            pair = []
+            filepath = osp.join(directory,
+                                filename_tmpl.format('img', frame_idx))
+            img_bytes = self.file_client.get(filepath)
+            # Get frame with channel order RGB directly.
+            cur_frame = mmcv.imfrombytes(img_bytes, channel_order='rgb')
+            pair.append(cur_frame)
+            # load Flow frames
+            x_filepath = osp.join(directory,
+                                  filename_tmpl.format('x', frame_idx))
+            y_filepath = osp.join(directory,
+                                  filename_tmpl.format('y', frame_idx))
+            x_img_bytes = self.file_client.get(x_filepath)
+            x_frame = mmcv.imfrombytes(x_img_bytes, flag='grayscale')
+            y_img_bytes = self.file_client.get(y_filepath)
+            y_frame = mmcv.imfrombytes(y_img_bytes, flag='grayscale')
+
+            x_frame = x_frame[:, :, np.newaxis]
+            y_frame = y_frame[:, :, np.newaxis]
+            pair.extend([x_frame, y_frame])
+            img = np.concatenate(pair, axis=2)
+            imgs.append(img)
+
+        results['imgs'] = imgs
+        results['original_shape'] = imgs[0].shape[:2]
+        results['img_shape'] = imgs[0].shape[:2]
+
+        return results
+
+
+@PIPELINES.register_module()
 class FrameSelector(RawFrameDecode):
     """Deprecated class for ``RawFrameDecode``."""
 

@@ -533,6 +533,7 @@ class Resize(object):
         return repr_str
 
 
+# Considering Flow
 @PIPELINES.register_module()
 class Flip(object):
     """Flip the input images with a probability.
@@ -610,6 +611,53 @@ class Flip(object):
 
 
 @PIPELINES.register_module()
+class RGBFlowFlip(object):
+    """Flip the input images with a probability."""
+    _directions = ['horizontal', 'vertical']
+
+    def __init__(self, flip_ratio=0.5, direction='horizontal'):
+        if direction not in self._directions:
+            raise ValueError(f'Direction {direction} is not supported. '
+                             f'Currently support ones are {self._directions}')
+        self.flip_ratio = flip_ratio
+        self.direction = direction
+
+    def __call__(self, results):
+        """Performs the Flip augmentation.
+
+        Args:
+            results (dict): The resulting dict to be modified and passed
+                to the next transform in pipeline.
+        """
+        modality = results['modality']
+        assert modality == 'RGBFlow'
+
+        if np.random.rand() < self.flip_ratio:
+            flip = True
+        else:
+            flip = False
+
+        results['flip'] = flip
+        results['flip_direction'] = self.direction
+
+        if flip:
+            for i, img in enumerate(results['imgs']):
+                assert img.shape[2] == 5
+                mmcv.imflip_(img, self.direction)
+                # The Flow x component
+                img[:, :, 3] = mmcv.iminvert(img[:, :, 3])
+
+        return results
+
+    def __repr__(self):
+        repr_str = (
+            f'{self.__class__.__name__}('
+            f'flip_ratio={self.flip_ratio}, direction={self.direction})')
+        return repr_str
+
+
+# Considering Flow
+@PIPELINES.register_module()
 class Normalize(object):
     """Normalize images with the given mean and std value.
 
@@ -644,7 +692,7 @@ class Normalize(object):
     def __call__(self, results):
         modality = results['modality']
 
-        if modality == 'RGB':
+        if modality == 'RGB' or modality == 'RGBFlow':
             n = len(results['imgs'])
             h, w, c = results['imgs'][0].shape
             imgs = np.empty((n, h, w, c), dtype=np.float32)
