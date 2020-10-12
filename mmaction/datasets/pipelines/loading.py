@@ -961,7 +961,7 @@ class RawRGBFlowDecode(object):
             flow_frame_idx = (
                 frame_idx - results['start_index']
             ) / results['total_frames'] * results['flow_total_frames']
-            flow_frame_idx = int(flow_frame_idx)
+            flow_frame_idx = int(flow_frame_idx) + results['start_index']
 
             # load RGB frame
             pair = []
