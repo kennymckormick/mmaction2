@@ -3,6 +3,7 @@ from collections.abc import Sequence
 
 import mmcv
 import numpy as np
+from skimage.transform import resize
 from torch.nn.modules.utils import _pair
 
 from ..registry import PIPELINES
@@ -512,11 +513,19 @@ class Resize(object):
         results['scale_factor'] = results['scale_factor'] * self.scale_factor
 
         if not self.lazy:
-            results['imgs'] = [
-                mmcv.imresize(
-                    img, (new_w, new_h), interpolation=self.interpolation)
-                for img in results['imgs']
-            ]
+            # The modality matters, if modality == 'RGBFlow', we have to use
+            # skimage resize (since 5 channels)
+            if results['modality'] == 'RGBFlow':
+                results['imgs'] = [
+                    (resize(img, (new_w, new_h), anti_aliasing=True) *
+                     255.0).astype(np.uint8) for img in results['imgs']
+                ]
+            else:
+                results['imgs'] = [
+                    mmcv.imresize(
+                        img, (new_w, new_h), interpolation=self.interpolation)
+                    for img in results['imgs']
+                ]
         else:
             lazyop = results['lazy']
             if lazyop['flip']:
