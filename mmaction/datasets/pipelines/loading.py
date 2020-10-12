@@ -973,9 +973,9 @@ class RawRGBFlowDecode(object):
             pair.append(cur_frame)
             # load Flow frames
             x_filepath = osp.join(directory,
-                                  filename_tmpl.format('x', frame_idx))
+                                  filename_tmpl.format('x', flow_frame_idx))
             y_filepath = osp.join(directory,
-                                  filename_tmpl.format('y', frame_idx))
+                                  filename_tmpl.format('y', flow_frame_idx))
             x_img_bytes = self.file_client.get(x_filepath)
             x_frame = mmcv.imfrombytes(x_img_bytes, flag='grayscale')
             y_img_bytes = self.file_client.get(y_filepath)
