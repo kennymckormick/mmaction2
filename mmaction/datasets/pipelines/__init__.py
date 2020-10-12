@@ -1,7 +1,7 @@
 from .augmentations import (CenterCrop, ColorJitter, Flip, Fuse,
                             MultiGroupCrop, MultiScaleCrop, Normalize,
-                            RandomCrop, RandomResizedCrop, Resize, TenCrop,
-                            ThreeCrop)
+                            RandomCrop, RandomResizedCrop, Resize, RGBFlowFlip,
+                            TenCrop, ThreeCrop)
 from .compose import Compose
 from .formating import (Collect, FormatShape, ImageToTensor, ToDataContainer,
                         ToTensor, Transpose)
@@ -9,7 +9,7 @@ from .loading import (DecordDecode, DecordInit, DenseSampleFrames,
                       FrameSelector, GenerateLocalizationLabels,
                       LoadLocalizationFeature, LoadProposals, OpenCVDecode,
                       OpenCVInit, PyAVDecode, PyAVInit, RawFrameDecode,
-                      SampleFrames, SampleProposalFrames,
+                      RawRGBFlowDecode, SampleFrames, SampleProposalFrames,
                       UntrimmedSampleFrames)
 
 __all__ = [
@@ -21,5 +21,6 @@ __all__ = [
     'GenerateLocalizationLabels', 'LoadLocalizationFeature', 'LoadProposals',
     'DecordInit', 'OpenCVInit', 'PyAVInit', 'SampleProposalFrames',
     'UntrimmedSampleFrames', 'RawFrameDecode', 'DecordInit', 'OpenCVInit',
-    'PyAVInit', 'SampleProposalFrames', 'ColorJitter'
+    'PyAVInit', 'SampleProposalFrames', 'ColorJitter', 'RGBFlowFlip',
+    'RawRGBFlowDecode'
 ]
