@@ -3,7 +3,6 @@ from collections.abc import Sequence
 
 import mmcv
 import numpy as np
-from skimage.transform import resize
 from torch.nn.modules.utils import _pair
 
 from ..registry import PIPELINES
@@ -514,11 +513,29 @@ class Resize(object):
 
         if not self.lazy:
             # The modality matters, if modality == 'RGBFlow', we have to use
-            # skimage resize (since 5 channels)
+            # nchannel_resize. In nchannel_resize, n channels are divided into
+            # groups of 3 channels or 1 channel. Currently only support 5
+            # channels
+            def nchannel_resize(img):
+                num_channels = img.shape[2]
+                assert num_channels == 5
+                rgb = mmcv.imresize(
+                    img[:, :, :3], (new_w, new_h),
+                    interpolation=self.interpolation)
+                flow_x = mmcv.imresize(
+                    img[:, :, 3], (new_w, new_h),
+                    interpolation=self.interpolation)
+                flow_y = mmcv.imresize(
+                    img[:, :, 4], (new_w, new_h),
+                    interpolation=self.interpolation)
+                flow_x = flow_x[:, :, np.newaxis]
+                flow_y = flow_y[:, :, np.newaxis]
+                img = np.concatenate([rgb, flow_x, flow_y], axis=2)
+                return img
+
             if results['modality'] == 'RGBFlow':
                 results['imgs'] = [
-                    (resize(img, (new_w, new_h), anti_aliasing=True) *
-                     255.0).astype(np.uint8) for img in results['imgs']
+                    nchannel_resize(img) for img in results['imgs']
                 ]
             else:
                 results['imgs'] = [
