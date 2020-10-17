@@ -72,6 +72,7 @@ class RawframeDataset2Mod(BaseDataset):
                  data_prefix=None,
                  test_mode=False,
                  filename_tmpl='{}_{:05}.jpg',
+                 filename_prefix=dict(img='img', x='x', y='y'),
                  with_offset=False,
                  multi_class=False,
                  num_classes=None,
@@ -107,8 +108,8 @@ class RawframeDataset2Mod(BaseDataset):
                 idx += 1
                 label = [int(x) for x in line_split[idx:]]
                 assert len(label), f'missing label in line: {line}'
-
                 assert len(label) == 1
+
                 video_info['label'] = label[0]
                 video_infos.append(video_info)
         return video_infos
@@ -119,6 +120,7 @@ class RawframeDataset2Mod(BaseDataset):
         results['filename_tmpl'] = self.filename_tmpl
         results['modality'] = self.modality
         results['start_index'] = self.start_index
+        results['filename_prefix'] = self.filename_prefix
 
         # prepare tensor in getitem
         if self.multi_class:
@@ -134,6 +136,7 @@ class RawframeDataset2Mod(BaseDataset):
         results['filename_tmpl'] = self.filename_tmpl
         results['modality'] = self.modality
         results['start_index'] = self.start_index
+        results['filename_prefix'] = self.filename_prefix
 
         # prepare tensor in getitem
         if self.multi_class:

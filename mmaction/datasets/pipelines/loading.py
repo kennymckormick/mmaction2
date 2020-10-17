@@ -955,6 +955,15 @@ class RawRGBFlowDecode(object):
         # Only for trimmed video recognition
         assert offset == 0
 
+        img_prefix = 'img'
+        x_prefix = 'x'
+        y_prefix = 'y'
+        if 'filename_prefix' in results:
+            filename_prefix = results['filename_prefix']
+            img_prefix = filename_prefix['img']
+            x_prefix = filename_prefix['x']
+            y_prefix = filename_prefix['y']
+
         for frame_idx in results['frame_inds']:
             frame_idx += offset
             # flow frame idx may be different from RGB index
@@ -966,16 +975,16 @@ class RawRGBFlowDecode(object):
             # load RGB frame
             pair = []
             filepath = osp.join(directory,
-                                filename_tmpl.format('img', frame_idx))
+                                filename_tmpl.format(img_prefix, frame_idx))
             img_bytes = self.file_client.get(filepath)
             # Get frame with channel order RGB directly.
             cur_frame = mmcv.imfrombytes(img_bytes, channel_order='rgb')
             pair.append(cur_frame)
             # load Flow frames
-            x_filepath = osp.join(directory,
-                                  filename_tmpl.format('x', flow_frame_idx))
-            y_filepath = osp.join(directory,
-                                  filename_tmpl.format('y', flow_frame_idx))
+            x_filepath = osp.join(
+                directory, filename_tmpl.format(x_prefix, flow_frame_idx))
+            y_filepath = osp.join(
+                directory, filename_tmpl.format(y_prefix, flow_frame_idx))
             x_img_bytes = self.file_client.get(x_filepath)
             x_frame = mmcv.imfrombytes(x_img_bytes, flag='grayscale')
             y_img_bytes = self.file_client.get(y_filepath)
