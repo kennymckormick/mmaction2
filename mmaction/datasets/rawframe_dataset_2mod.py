@@ -80,6 +80,7 @@ class RawframeDataset2Mod(BaseDataset):
                  modality='RGBFlow'):
         self.filename_tmpl = filename_tmpl
         self.with_offset = with_offset
+        self.filename_prefix = filename_prefix
         assert multi_class is False
         assert self.with_offset is False
         super().__init__(ann_file, pipeline, data_prefix, test_mode,

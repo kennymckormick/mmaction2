@@ -1019,6 +1019,13 @@ class RawRGBFlowDecode(object):
             x_frame = x_frame[:, :, np.newaxis]
             y_frame = y_frame[:, :, np.newaxis]
             pair.extend([x_frame, y_frame])
+
+            hs = [x.shape[0] for x in pair]
+            ws = [x.shape[1] for x in pair]
+            min_h = min(hs)
+            min_w = min(ws)
+            pair = [x[:min_h, :min_w] for x in pair]
+
             img = np.concatenate(pair, axis=2)
             imgs.append(img)
 
