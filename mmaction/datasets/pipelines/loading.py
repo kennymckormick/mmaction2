@@ -910,6 +910,32 @@ class RawFrameDecode(object):
 
 
 @PIPELINES.register_module()
+class PoseDecode(object):
+    """Load and decode pose with given indices.
+
+    Required keys are "frame_inds", "per_frame_box", "kp" and "kpscore".
+    """
+
+    def __call__(self, results):
+        """Perform the ``RawFrameDecode`` to pick frames given indices.
+
+        Args:
+            results (dict): The resulting dict to be modified and passed
+                to the next transform in pipeline.
+        """
+        if results['frame_inds'].ndim != 1:
+            results['frame_inds'] = np.squeeze(results['frame_inds'])
+
+        offset = results.get('offset', 0)
+        frame_inds = results['frame_inds'] + offset
+        results['per_frame_box'] = results['per_frame_box'][frame_inds]
+        results['kp'] = results['kp'][frame_inds]
+        results['kpscore'] = results['kpscore'][frame_inds]
+
+        return results
+
+
+@PIPELINES.register_module()
 class RawRGBFlowDecode(object):
     """Load and decode frames with given indices.
 

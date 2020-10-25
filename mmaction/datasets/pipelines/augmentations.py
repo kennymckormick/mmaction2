@@ -1,3 +1,4 @@
+import copy as cp
 import random
 from collections.abc import Sequence
 
@@ -6,6 +7,9 @@ import numpy as np
 from torch.nn.modules.utils import _pair
 
 from ..registry import PIPELINES
+
+# Pose related modules include PoseRandomResizedCrop, PoseMultiScaleCrop,
+# PoseResize, PoseFlip, PoseCenterCrop, PoseThreeCrop
 
 
 def _init_lazy_if_proper(results, lazy):
@@ -291,6 +295,48 @@ class RandomResizedCrop(object):
 
 
 @PIPELINES.register_module()
+class PoseRandomResizedCrop(RandomResizedCrop):
+    """RandomResizedCrop for Pose Data."""
+
+    def __init__(self,
+                 area_range=(0.2, 1.0),
+                 aspect_ratio_range=(3 / 4, 4 / 3)):
+        super().__init__(
+            area_range=area_range,
+            aspect_ratio_range=aspect_ratio_range,
+            lazy=False)
+
+    def __call__(self, results):
+        """Performs the RandomResizeCrop augmentation.
+
+        Args:
+            results (dict): The resulting dict to be modified and passed
+                to the next transform in pipeline.
+        """
+
+        img_h, img_w = results['img_shape']
+
+        left, top, right, bottom = self.get_crop_bbox(
+            (img_h, img_w), self.area_range, self.aspect_ratio_range)
+        new_h, new_w = bottom - top, right - left
+
+        results['crop_bbox'] = np.array([left, top, right, bottom])
+        results['img_shape'] = (new_h, new_w)
+
+        # The new origin is (left, top)
+        new_origin = np.array([left, top])
+        results['kp'] -= new_origin
+        results['per_frame_box'][:, :2] -= new_origin
+        return results
+
+    def __repr__(self):
+        repr_str = (f'{self.__class__.__name__}('
+                    f'area_range={self.area_range}, '
+                    f'aspect_ratio_range={self.aspect_ratio_range})')
+        return repr_str
+
+
+@PIPELINES.register_module()
 class MultiScaleCrop(object):
     """Crop images with a list of randomly selected scales.
 
@@ -440,6 +486,90 @@ class MultiScaleCrop(object):
 
 
 @PIPELINES.register_module()
+class PoseMultiScaleCrop(object):
+    """MultiScaleCrop for Pose Data."""
+
+    def __init__(self,
+                 input_size,
+                 scales=(1, ),
+                 max_wh_scale_gap=1,
+                 random_crop=False,
+                 num_fixed_crops=5):
+        super().__init__(
+            input_size=input_size,
+            scales=scales,
+            max_wh_scale_gap=max_wh_scale_gap,
+            random_crop=random_crop,
+            num_fixed_crops=num_fixed_crops)
+
+    def __call__(self, results):
+        img_h, img_w = results['img_shape']
+        base_size = min(img_h, img_w)
+        crop_sizes = [int(base_size * s) for s in self.scales]
+
+        candidate_sizes = []
+        for i, h in enumerate(crop_sizes):
+            for j, w in enumerate(crop_sizes):
+                if abs(i - j) <= self.max_wh_scale_gap:
+                    candidate_sizes.append([w, h])
+
+        crop_size = random.choice(candidate_sizes)
+        for i in range(2):
+            if abs(crop_size[i] - self.input_size[i]) < 3:
+                crop_size[i] = self.input_size[i]
+
+        crop_w, crop_h = crop_size
+
+        if self.random_crop:
+            x_offset = random.randint(0, img_w - crop_w)
+            y_offset = random.randint(0, img_h - crop_h)
+        else:
+            w_step = (img_w - crop_w) // 4
+            h_step = (img_h - crop_h) // 4
+            candidate_offsets = [
+                (0, 0),  # upper left
+                (4 * w_step, 0),  # upper right
+                (0, 4 * h_step),  # lower left
+                (4 * w_step, 4 * h_step),  # lower right
+                (2 * w_step, 2 * h_step),  # center
+            ]
+            if self.num_fixed_crops == 13:
+                extra_candidate_offsets = [
+                    (0, 2 * h_step),  # center left
+                    (4 * w_step, 2 * h_step),  # center right
+                    (2 * w_step, 4 * h_step),  # lower center
+                    (2 * w_step, 0 * h_step),  # upper center
+                    (1 * w_step, 1 * h_step),  # upper left quarter
+                    (3 * w_step, 1 * h_step),  # upper right quarter
+                    (1 * w_step, 3 * h_step),  # lower left quarter
+                    (3 * w_step, 3 * h_step)  # lower right quarter
+                ]
+                candidate_offsets.extend(extra_candidate_offsets)
+            x_offset, y_offset = random.choice(candidate_offsets)
+
+        new_h, new_w = crop_h, crop_w
+
+        results['crop_bbox'] = np.array(
+            [x_offset, y_offset, x_offset + new_w, y_offset + new_h])
+        results['img_shape'] = (new_h, new_w)
+        results['scales'] = self.scales
+
+        new_origin = np.array([x_offset, y_offset])
+        results['kp'] -= new_origin
+        results['per_frame_box'][:, :2] -= new_origin
+
+        return results
+
+    def __repr__(self):
+        repr_str = (f'{self.__class__.__name__}('
+                    f'input_size={self.input_size}, scales={self.scales}, '
+                    f'max_wh_scale_gap={self.max_wh_scale_gap}, '
+                    f'random_crop={self.random_crop}, '
+                    f'num_fixed_crops={self.num_fixed_crops}')
+        return repr_str
+
+
+@PIPELINES.register_module()
 class Resize(object):
     """Resize images to a specific size.
 
@@ -559,7 +689,78 @@ class Resize(object):
         return repr_str
 
 
-# Considering Flow
+@PIPELINES.register_module()
+class PoseResize(object):
+    """Resize pose input to a specific size.
+
+    Lazy not supported.
+    Required keys are "img_shape", "kp", "per_frame_box", added or modified
+    keys are "img_shape", "keep_ratio", "scale_factor", "kp", "per_frame_box".
+
+    Args:
+        scale (float | Tuple[int]): If keep_ratio is True, it serves as scaling
+            factor or maximum size:
+            If it is a float number, the image will be rescaled by this
+            factor, else if it is a tuple of 2 integers, the image will
+            be rescaled as large as possible within the scale.
+            Otherwise, it serves as (w, h) of output size.
+        keep_ratio (bool): If set to True, Images will be resized without
+            changing the aspect ratio. Otherwise, it will resize images to a
+            given size. Default: True.
+    """
+
+    def __init__(self, scale, keep_ratio=True):
+        if isinstance(scale, float):
+            if scale <= 0:
+                raise ValueError(f'Invalid scale {scale}, must be positive.')
+        elif isinstance(scale, tuple):
+            max_long_edge = max(scale)
+            max_short_edge = min(scale)
+            if max_short_edge == -1:
+                scale = (np.inf, max_long_edge)
+        else:
+            raise TypeError(
+                f'Scale must be float or tuple of int, but got {type(scale)}')
+        self.scale = scale
+        self.keep_ratio = keep_ratio
+
+    def __call__(self, results):
+        """Performs the Resize augmentation.
+
+        Args:
+            results (dict): The resulting dict to be modified and passed
+                to the next transform in pipeline.
+        """
+
+        if 'scale_factor' not in results:
+            results['scale_factor'] = np.array([1, 1], dtype=np.float32)
+        img_h, img_w = results['img_shape']
+
+        if self.keep_ratio:
+            new_w, new_h = mmcv.rescale_size((img_w, img_h), self.scale)
+        else:
+            new_w, new_h = self.scale
+
+        self.scale_factor = np.array([new_w / img_w, new_h / img_h],
+                                     dtype=np.float32)
+
+        results['img_shape'] = (new_h, new_w)
+        results['keep_ratio'] = self.keep_ratio
+        results['scale_factor'] = results['scale_factor'] * self.scale_factor
+
+        # should be OK
+        results['kp'] *= self.scale_factor
+        # x and w
+        results['per_frame_box'][:, 0::2] *= self.scale_factor[0]
+        results['per_frame_box'][:, 1::2] *= self.scale_factor[1]
+        return results
+
+    def __repr__(self):
+        repr_str = (f'{self.__class__.__name__}('
+                    f'scale={self.scale}, keep_ratio={self.keep_ratio}')
+        return repr_str
+
+
 @PIPELINES.register_module()
 class Flip(object):
     """Flip the input images with a probability.
@@ -682,7 +883,47 @@ class RGBFlowFlip(object):
         return repr_str
 
 
-# Considering Flow
+@PIPELINES.register_module()
+class PoseFlip(object):
+    _directions = ['horizontal', 'vertical']
+
+    def __init__(self, flip_ratio=0.5, direction='horizontal'):
+        if direction not in self._directions:
+            raise ValueError(f'Direction {direction} is not supported. '
+                             f'Currently support ones are {self._directions}')
+        self.flip_ratio = flip_ratio
+        self.direction = direction
+
+    def __call__(self, results):
+        modality = results['modality']
+        assert modality == 'Pose'
+
+        if np.random.rand() < self.flip_ratio:
+            flip = True
+        else:
+            flip = False
+
+        results['flip'] = flip
+        results['flip_direction'] = self.direction
+
+        img_width = results['img_shape'][0]
+        if flip:
+            results['kp'][:, :, 0] = img_width - results['kp'][:, :, 0]
+            bbox = results['per_frame_box']
+            old_right = bbox[:, 0] + bbox[:, 2]
+            new_left = img_width - old_right
+            bbox[:, 0] = new_left
+            results['per_frame_box'] = bbox
+
+        return results
+
+    def __repr__(self):
+        repr_str = (
+            f'{self.__class__.__name__}('
+            f'flip_ratio={self.flip_ratio}, direction={self.direction})')
+        return repr_str
+
+
 @PIPELINES.register_module()
 class Normalize(object):
     """Normalize images with the given mean and std value.
@@ -1023,6 +1264,36 @@ class CenterCrop(object):
 
 
 @PIPELINES.register_module()
+class PoseCenterCrop(CenterCrop):
+
+    def __init__(self, crop_size):
+        super().__init__(crop_size=crop_size, lazy=False)
+
+    def __call__(self, results):
+        img_h, img_w = results['img_shape']
+        crop_w, crop_h = self.crop_size
+
+        left = (img_w - crop_w) // 2
+        top = (img_h - crop_h) // 2
+        right = left + crop_w
+        bottom = top + crop_h
+        new_h, new_w = bottom - top, right - left
+
+        results['crop_bbox'] = np.array([left, top, right, bottom])
+        results['img_shape'] = (new_h, new_w)
+        new_origin = np.array([left, top])
+
+        results['kp'] -= new_origin
+        results['per_frame_box'][:, :2] -= new_origin
+
+        return results
+
+    def __repr__(self):
+        repr_str = (f'{self.__class__.__name__}(crop_size={self.crop_size})')
+        return repr_str
+
+
+@PIPELINES.register_module()
 class ThreeCrop(object):
     """Crop images into three crops.
 
@@ -1048,8 +1319,6 @@ class ThreeCrop(object):
             results (dict): The resulting dict to be modified and passed
                 to the next transform in pipeline.
         """
-        _init_lazy_if_proper(results, False)
-
         imgs = results['imgs']
         img_h, img_w = results['imgs'][0].shape[:2]
         crop_w, crop_h = self.crop_size
@@ -1094,6 +1363,62 @@ class ThreeCrop(object):
 
 
 @PIPELINES.register_module()
+class PoseThreeCrop(ThreeCrop):
+
+    def __init__(self, crop_size):
+        super().__init__(crop_size=crop_size, lazy=False)
+
+    def __call__(self, results):
+        img_h, img_w = results['img_shape']
+        crop_w, crop_h = self.crop_size
+        assert crop_h == img_h or crop_w == img_w
+
+        if crop_h == img_h:
+            w_step = (img_w - crop_w) // 2
+            offsets = [
+                (0, 0),  # left
+                (2 * w_step, 0),  # right
+                (w_step, 0),  # middle
+            ]
+        elif crop_w == img_w:
+            h_step = (img_h - crop_h) // 2
+            offsets = [
+                (0, 0),  # top
+                (0, 2 * h_step),  # down
+                (0, h_step),  # middle
+            ]
+
+        crop_bboxes = []
+        kp = results['kp']
+        box = results['per_frame_box']
+        kps = []
+        boxes = []
+        num_imgs = kp.shape[0]
+
+        for x_offset, y_offset in offsets:
+            bbox = [x_offset, y_offset, x_offset + crop_w, y_offset + crop_h]
+            crop_bboxes.extend([bbox for _ in range(num_imgs)])
+
+            new_origin = np.array()
+            # append kp
+            kps.append(kp - new_origin)
+            new_box = cp.deepcopy(box)
+            new_box[:, :2] -= new_origin
+            boxes.append(new_box)
+
+        crop_bboxes = np.array(crop_bboxes)
+        kps = np.concatenate(kps, axis=0)
+        boxes = np.concatenate(boxes, axis=0)
+
+        results['kp'] = kps
+        results['per_frame_box'] = boxes
+        results['crop_bbox'] = crop_bboxes
+        results['img_shape'] = (crop_h, crop_w)
+
+        return results
+
+
+@PIPELINES.register_module()
 class TenCrop(object):
     """Crop the images into 10 crops (corner + center + flip).
 
@@ -1119,8 +1444,6 @@ class TenCrop(object):
             results (dict): The resulting dict to be modified and passed
                 to the next transform in pipeline.
         """
-        _init_lazy_if_proper(results, False)
-
         imgs = results['imgs']
 
         img_h, img_w = results['imgs'][0].shape[:2]
@@ -1227,3 +1550,70 @@ class MultiGroupCrop(object):
                     f'(crop_size={self.crop_size}, '
                     f'groups={self.groups})')
         return repr_str
+
+
+# If human_rescale==True, resize the Gaussian sigma with the coefficient:
+# human box diagonal / image diagonal. The sigma of Gaussian becomes smaller.
+# use_score: use score as the max value of the gaussian
+@PIPELINES.register_module()
+class GeneratePoseTarget(object):
+
+    def __init__(self, sigma=2, human_rescale=False, use_score=False):
+        self.sigma = sigma
+        self.human_rescale = human_rescale
+        self.use_score = use_score
+
+    def generate_a_heatmap(self, img_h, img_w, center, sigma, max_value):
+        heatmap = np.zeros([img_h, img_w], dtype=np.float32)
+        mu_x, mu_y = center[0], center[1]
+        # 3 sigma is OK
+        st_x = max(int(mu_x - 3 * sigma), 0)
+        ed_x = min(int(mu_x + 3 * sigma) + 2, img_w)
+        st_y = max(int(mu_y - 3 * sigma), 0)
+        ed_y = min(int(mu_y - 3 * sigma) + 2, img_h)
+        x = np.arange(st_x, ed_x, 1, np.float32)
+        y = np.arange(st_y, ed_y, 1, np.float32)
+        y = y[:, None]
+        patch = np.exp(-((x - mu_x)**2 + (y - mu_y)**2) / 2 / sigma**2)
+        patch = patch * max_value
+        heatmap[st_y:ed_y, st_x, ed_x] = patch
+        return heatmap
+
+    # sigma should have already been adjusted
+    def generate_heatmap(self, img_h, img_w, kps, sigma, max_values):
+        heatmaps = []
+        for kp, value in zip(kps, max_values):
+            heatmaps.append(
+                self.generate_a_heatmap(img_h, img_w, kp, sigma, value))
+        return np.stack(heatmaps, axis=-1)
+
+    # Just use the low performance implementation
+    def __call__(self, results):
+        all_kps = results['kp']
+        all_boxes = results['per_frame_box']
+        all_kpscores = results['kpscores']
+        num_frame = all_boxes.shape[0]
+
+        if self.human_rescale:
+            original_diag = np.linalg.norm(results['img_shape'])
+            box_diag = np.linalg.norm(all_boxes[:, 2:], axis=1)
+            sigma_ratio = box_diag / original_diag
+        else:
+            sigma_ratio = np.ones(num_frame, dtype=np.float32)
+
+        sigmas = self.sigma * sigma_ratio
+        img_h, img_w = results['img_shape']
+
+        imgs = []
+        for i in range(num_frame):
+            kps = all_kps[i]
+            kpscores = all_kpscores[i]
+            sigma = sigmas[i]
+
+            num_kps = kpscores.shape[0]
+            max_values = np.ones(num_kps)
+            if self.use_score:
+                max_values = kpscores
+            imgs.append(
+                self.generate_heatmap(img_h, img_w, kps, sigma, max_values))
+        results['imgs'] = imgs
