@@ -336,6 +336,7 @@ class ResNet(nn.Module):
                  torchvision_pretrain=True,
                  in_channels=3,
                  num_stages=4,
+                 base_channels=64,
                  out_indices=(3, ),
                  strides=(1, 2, 2, 2),
                  dilations=(1, 1, 1, 1),
@@ -352,6 +353,7 @@ class ResNet(nn.Module):
             raise KeyError(f'invalid depth {depth} for resnet')
         self.depth = depth
         self.in_channels = in_channels
+        self.base_channels = base_channels
         self.pretrained = pretrained
         self.torchvision_pretrain = torchvision_pretrain
         self.num_stages = num_stages
@@ -372,7 +374,7 @@ class ResNet(nn.Module):
 
         self.block, stage_blocks = self.arch_settings[depth]
         self.stage_blocks = stage_blocks[:num_stages]
-        self.inplanes = 64
+        self.inplanes = self.base_channels
 
         self._make_stem_layer()
 
@@ -380,7 +382,7 @@ class ResNet(nn.Module):
         for i, num_blocks in enumerate(self.stage_blocks):
             stride = strides[i]
             dilation = dilations[i]
-            planes = 64 * 2**i
+            planes = self.base_channels * 2**i
             res_layer = make_res_layer(
                 self.block,
                 self.inplanes,
@@ -398,7 +400,7 @@ class ResNet(nn.Module):
             self.add_module(layer_name, res_layer)
             self.res_layers.append(layer_name)
 
-        self.feat_dim = self.block.expansion * 64 * 2**(
+        self.feat_dim = self.block.expansion * self.base_channels * 2**(
             len(self.stage_blocks) - 1)
 
     def _make_stem_layer(self):
@@ -406,7 +408,7 @@ class ResNet(nn.Module):
         pooling layer."""
         self.conv1 = ConvModule(
             self.in_channels,
-            64,
+            self.base_channels,
             kernel_size=7,
             stride=2,
             padding=3,

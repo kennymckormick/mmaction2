@@ -395,8 +395,10 @@ class ResNet3d(nn.Module):
                  temporal_strides=(1, 1, 1, 1),
                  dilations=(1, 1, 1, 1),
                  conv1_kernel=(5, 7, 7),
-                 conv1_stride_t=2,
-                 pool1_stride_t=2,
+                 conv1_stride_s=2,
+                 conv1_stride_t=1,
+                 pool1_stride_s=2,
+                 pool1_stride_t=1,
                  with_pool2=True,
                  style='pytorch',
                  frozen_stages=-1,
@@ -723,7 +725,8 @@ class ResNet3d(nn.Module):
             self.in_channels,
             self.base_channels,
             kernel_size=self.conv1_kernel,
-            stride=(self.conv1_stride_t, 2, 2),
+            stride=(self.conv1_stride_t, self.conv1_stride_s,
+                    self.conv1_stride_s),
             padding=tuple([(k - 1) // 2 for k in _triple(self.conv1_kernel)]),
             bias=False,
             conv_cfg=self.conv_cfg,
@@ -732,7 +735,8 @@ class ResNet3d(nn.Module):
 
         self.maxpool = nn.MaxPool3d(
             kernel_size=(1, 3, 3),
-            stride=(self.pool1_stride_t, 2, 2),
+            stride=(self.pool1_stride_t, self.pool1_stride_s,
+                    self.pool1_stride_s),
             padding=(0, 1, 1))
 
         self.pool2 = nn.MaxPool3d(kernel_size=(2, 1, 1), stride=(2, 1, 1))
