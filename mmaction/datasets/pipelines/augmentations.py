@@ -1570,13 +1570,18 @@ class GeneratePoseTarget(object):
         st_x = max(int(mu_x - 3 * sigma), 0)
         ed_x = min(int(mu_x + 3 * sigma) + 2, img_w)
         st_y = max(int(mu_y - 3 * sigma), 0)
-        ed_y = min(int(mu_y - 3 * sigma) + 2, img_h)
+        ed_y = min(int(mu_y + 3 * sigma) + 2, img_h)
         x = np.arange(st_x, ed_x, 1, np.float32)
         y = np.arange(st_y, ed_y, 1, np.float32)
+
+        # return an empty heatmap (since not in the image)
+        if not (len(x) and len(y)):
+            return heatmap
         y = y[:, None]
+
         patch = np.exp(-((x - mu_x)**2 + (y - mu_y)**2) / 2 / sigma**2)
         patch = patch * max_value
-        heatmap[st_y:ed_y, st_x, ed_x] = patch
+        heatmap[st_y:ed_y, st_x:ed_x] = patch
         return heatmap
 
     # sigma should have already been adjusted
@@ -1591,7 +1596,7 @@ class GeneratePoseTarget(object):
     def __call__(self, results):
         all_kps = results['kp']
         all_boxes = results['per_frame_box']
-        all_kpscores = results['kpscores']
+        all_kpscores = results['kpscore']
         num_frame = all_boxes.shape[0]
 
         if self.human_rescale:
