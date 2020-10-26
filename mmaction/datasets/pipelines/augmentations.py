@@ -299,7 +299,7 @@ class PoseRandomResizedCrop(RandomResizedCrop):
     """RandomResizedCrop for Pose Data."""
 
     def __init__(self,
-                 area_range=(0.2, 1.0),
+                 area_range=(0.25, 1.0),
                  aspect_ratio_range=(3 / 4, 4 / 3)):
         super().__init__(
             area_range=area_range,
