@@ -1,7 +1,10 @@
 from .augmentations import (CenterCrop, ColorJitter, Flip, Fuse,
-                            MultiGroupCrop, MultiScaleCrop, Normalize,
-                            RandomCrop, RandomResizedCrop, Resize, RGBFlowFlip,
-                            TenCrop, ThreeCrop)
+                            GeneratePoseTarget, MultiGroupCrop, MultiScaleCrop,
+                            Normalize, PoseCenterCrop, PoseFlip,
+                            PoseMultiScaleCrop, PoseRandomResizedCrop,
+                            PoseResize, PoseThreeCrop, RandomCrop,
+                            RandomResizedCrop, Resize, RGBFlowFlip, TenCrop,
+                            ThreeCrop)
 from .compose import Compose
 from .formating import (Collect, FormatShape, ImageToTensor, ToDataContainer,
                         ToTensor, Transpose)
@@ -22,5 +25,7 @@ __all__ = [
     'DecordInit', 'OpenCVInit', 'PyAVInit', 'SampleProposalFrames',
     'UntrimmedSampleFrames', 'RawFrameDecode', 'DecordInit', 'OpenCVInit',
     'PyAVInit', 'SampleProposalFrames', 'ColorJitter', 'RGBFlowFlip',
-    'RawRGBFlowDecode'
+    'RawRGBFlowDecode', 'PoseRandomResizedCrop', 'PoseMultiScaleCrop',
+    'PoseCenterCrop', 'PoseThreeCrop', 'PoseResize', 'PoseFlip',
+    'GeneratePoseTarget'
 ]
