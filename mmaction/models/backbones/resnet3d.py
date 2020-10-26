@@ -431,7 +431,9 @@ class ResNet3d(nn.Module):
         assert len(spatial_strides) == len(temporal_strides) == len(
             dilations) == num_stages
         self.conv1_kernel = conv1_kernel
+        self.conv1_stride_s = conv1_stride_s
         self.conv1_stride_t = conv1_stride_t
+        self.pool1_stride_s = pool1_stride_s
         self.pool1_stride_t = pool1_stride_t
         self.with_pool2 = with_pool2
         self.style = style
