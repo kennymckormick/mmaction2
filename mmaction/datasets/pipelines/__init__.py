@@ -11,9 +11,9 @@ from .formating import (Collect, FormatShape, ImageToTensor, ToDataContainer,
 from .loading import (DecordDecode, DecordInit, DenseSampleFrames,
                       FrameSelector, GenerateLocalizationLabels,
                       LoadLocalizationFeature, LoadProposals, OpenCVDecode,
-                      OpenCVInit, PyAVDecode, PyAVInit, RawFrameDecode,
-                      RawRGBFlowDecode, SampleFrames, SampleProposalFrames,
-                      UntrimmedSampleFrames)
+                      OpenCVInit, PoseDecode, PyAVDecode, PyAVInit,
+                      RawFrameDecode, RawRGBFlowDecode, SampleFrames,
+                      SampleProposalFrames, UntrimmedSampleFrames)
 
 __all__ = [
     'SampleFrames', 'PyAVDecode', 'DecordDecode', 'DenseSampleFrames',
@@ -27,5 +27,5 @@ __all__ = [
     'PyAVInit', 'SampleProposalFrames', 'ColorJitter', 'RGBFlowFlip',
     'RawRGBFlowDecode', 'PoseRandomResizedCrop', 'PoseMultiScaleCrop',
     'PoseCenterCrop', 'PoseThreeCrop', 'PoseResize', 'PoseFlip',
-    'GeneratePoseTarget'
+    'GeneratePoseTarget', 'PoseDecode'
 ]

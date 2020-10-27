@@ -1621,5 +1621,5 @@ class GeneratePoseTarget(object):
                 max_values = kpscores
             imgs.append(
                 self.generate_heatmap(img_h, img_w, kps, sigma, max_values))
-        results['imgs'] = imgs
+        results['imgs'] = np.stack(imgs)
         return results
