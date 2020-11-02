@@ -1,11 +1,11 @@
-import torch  # isort:skip
-import torch.nn as nn  # isort:skip
-from mmcv.cnn import normal_init  # isort:skip
-from torch.autograd import Function  # isort:skip
-import numpy as np  # isort:skip
+import numpy as np
+import torch
+import torch.nn as nn
+from mmcv.cnn import normal_init
+from torch.autograd import Function
 
-from ..registry import HEADS  # isort:skip
-from .base import AvgConsensus, BaseHead  # isort:skip
+from ..registry import HEADS
+from .base import AvgConsensus, BaseHead
 
 
 class ReverseLayerF(Function):
