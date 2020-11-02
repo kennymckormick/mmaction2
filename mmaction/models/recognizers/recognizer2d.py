@@ -26,6 +26,10 @@ class Recognizer2D(BaseRecognizer):
             num_segs = 1
 
         cls_score = self.cls_head(x, num_segs, **kwargs)
+        # progress is not further needed by loss
+        if 'progress' in kwargs:
+            kwargs.pop('progress')
+
         gt_labels = labels.squeeze()
         loss_cls = self.cls_head.loss(cls_score, gt_labels, **kwargs)
         losses.update(loss_cls)
