@@ -16,7 +16,7 @@ class Recognizer3D(BaseRecognizer):
             x, loss_aux = self.neck(x, labels.squeeze())
             losses.update(loss_aux)
 
-        cls_score = self.cls_head(x)
+        cls_score = self.cls_head(x, **kwargs)
         gt_labels = labels.squeeze()
         loss_cls = self.cls_head.loss(cls_score, gt_labels, **kwargs)
         losses.update(loss_cls)

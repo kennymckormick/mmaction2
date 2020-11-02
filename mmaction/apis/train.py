@@ -2,11 +2,11 @@ import copy as cp
 
 import torch
 from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
-from mmcv.runner import (DistSamplerSeedHook, EpochBasedRunner, OptimizerHook,
-                         build_optimizer)
+from mmcv.runner import DistSamplerSeedHook, OptimizerHook, build_optimizer
 from mmcv.runner.hooks import Fp16OptimizerHook
 
-from ..core import (DistEpochEvalHook, EpochEvalHook,
+# Use MyEpochBasedRunner to replace EpochBasedRunner
+from ..core import (DistEpochEvalHook, EpochEvalHook, MyEpochBasedRunner,
                     OmniSourceDistSamplerSeedHook, OmniSourceRunner)
 from ..datasets import build_dataloader, build_dataset
 from ..utils import get_root_logger
@@ -85,7 +85,7 @@ def train_model(model,
     # build runner
     optimizer = build_optimizer(model, cfg.optimizer)
 
-    Runner = OmniSourceRunner if cfg.omnisource else EpochBasedRunner
+    Runner = OmniSourceRunner if cfg.omnisource else MyEpochBasedRunner
     runner = Runner(
         model,
         optimizer=optimizer,

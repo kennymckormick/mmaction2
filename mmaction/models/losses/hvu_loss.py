@@ -121,9 +121,11 @@ class HVULoss(BaseWeightedLoss):
                 # the loss used for backward in the losses dictionary
                 losses[f'{name}_LOSS'] = category_loss
                 loss_weights[f'{name}_LOSS'] = self.category_loss_weights[idx]
-            loss_weight_sum = sum(loss_weights.values())
+            # Normalizing on all categories, exist or not exist
+            # the loss might be smaller for some iterations
+            loss_weights_sum = sum(self.category_loss_weights)
             loss_weights = {
-                k: v / loss_weight_sum
+                k: v / loss_weights_sum
                 for k, v in loss_weights.items()
             }
             loss_cls = sum([losses[k] * loss_weights[k] for k in losses])

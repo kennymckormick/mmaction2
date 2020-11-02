@@ -25,7 +25,7 @@ class Recognizer2D(BaseRecognizer):
             x = x.squeeze(2)
             num_segs = 1
 
-        cls_score = self.cls_head(x, num_segs)
+        cls_score = self.cls_head(x, num_segs, **kwargs)
         gt_labels = labels.squeeze()
         loss_cls = self.cls_head.loss(cls_score, gt_labels, **kwargs)
         losses.update(loss_cls)
