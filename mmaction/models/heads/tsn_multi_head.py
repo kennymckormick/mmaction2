@@ -157,6 +157,6 @@ class TSNMultiHead(BaseHead):
                 ret = head(feat)
             outputs.append(ret)
 
-        cls_score = torch.cat(outputs, axis=1)
+        cls_score = torch.cat(outputs, dim=1)
         # [N, num_classes]
         return cls_score
