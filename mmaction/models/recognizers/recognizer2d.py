@@ -67,7 +67,10 @@ class Recognizer2D(BaseRecognizer):
                 test_crops = test_crops * 2
             cls_score = self.average_clip(cls_score, test_crops)
 
-        return cls_score.cpu().numpy()
+        ret = cls_score.cpu().numpy()
+        if hasattr(self, 'test_inds') and self.test_inds is not None:
+            ret = ret[self.test_inds]
+        return ret
 
     def forward_dummy(self, imgs):
         """Used for computing network FLOPs.

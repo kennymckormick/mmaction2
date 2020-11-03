@@ -47,6 +47,10 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         self.aux_info = []
         if train_cfg is not None and 'aux_info' in train_cfg:
             self.aux_info = train_cfg['aux_info']
+        # test_inds should be a list, contain class inds needed
+        self.test_inds = None
+        if test_cfg is not None and 'test_inds' in test_cfg:
+            self.test_inds = test_cfg['test_inds']
 
         self.init_weights()
 

@@ -40,7 +40,10 @@ class Recognizer3D(BaseRecognizer):
         cls_score = self.cls_head(x)
         cls_score = self.average_clip(cls_score, num_segs)
 
-        return cls_score.cpu().numpy()
+        ret = cls_score.cpu().numpy()
+        if hasattr(self, 'test_inds') and self.test_inds is not None:
+            ret = ret[self.test_inds]
+        return ret
 
     def forward_dummy(self, imgs):
         """Used for computing network FLOPs.
