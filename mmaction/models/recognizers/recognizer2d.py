@@ -69,7 +69,7 @@ class Recognizer2D(BaseRecognizer):
 
         ret = cls_score.cpu().numpy()
         if hasattr(self, 'test_inds') and self.test_inds is not None:
-            ret = ret[self.test_inds]
+            ret = ret[:, self.test_inds]
         return ret
 
     def forward_dummy(self, imgs):
