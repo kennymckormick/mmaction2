@@ -110,38 +110,22 @@ class TSNMultiHead(BaseHead):
         for fc in self.fcs:
             normal_init(fc, std=self.init_std)
 
-    # we need runner_info to determine
-    def forward(self, x, num_segs, **kwargs):
-        """Defines the computation performed at every call.
-
-        Args:
-            x (torch.Tensor): The input data.
-            num_segs (int): Number of segments into which a video
-                is divided.
-        Returns:
-            torch.Tensor: The classification scores for input samples.
-        """
+    # we need runner_info to determine, note that progress is only needed in
+    # forward_train
+    def forward_train(self, x, num_segs, **kwargs):
         progress = None
         if True in self.grad_rev:
             assert 'progress' in kwargs
             progress = kwargs['progress']
             assert progress is not None
-        # [N * num_segs, in_channels, 7, 7]
         if self.avg_pool is not None:
             x = self.avg_pool(x)
-            # [N * num_segs, in_channels, 1, 1]
         x = x.reshape((-1, num_segs) + x.shape[1:])
-        # [N, num_segs, in_channels, 1, 1]
         x = self.consensus(x)
-        # [N, 1, in_channels, 1, 1]
         x = x.squeeze(1)
-        # [N, in_channels, 1, 1]
         if self.dropout is not None:
             x = self.dropout(x)
-            # [N, in_channels, 1, 1]
         x = x.view(x.size(0), -1)
-        # [N, in_channels]
-        # before we input the feature into different fc, apply grad_rev
         outputs = []
         for i in range(self.num_heads):
             grad_rev = self.grad_rev[i]
@@ -158,5 +142,26 @@ class TSNMultiHead(BaseHead):
             outputs.append(ret)
 
         cls_score = torch.cat(outputs, dim=1)
-        # [N, num_classes]
         return cls_score
+
+    def forward_val(self, x, num_segs, **kwargs):
+        if self.avg_pool is not None:
+            x = self.avg_pool(x)
+        x = x.reshape((-1, num_segs) + x.shape[1:])
+        x = self.consensus(x)
+        x = x.squeeze(1)
+        x = x.view(x.size(0), -1)
+        outputs = []
+        for i in range(self.num_heads):
+            head = self.fcs[i]
+            ret = head(x)
+            outputs.append(ret)
+
+        cls_score = torch.cat(outputs, dim=1)
+        return cls_score
+
+    def forward(self, x, num_segs, **kwargs):
+        if self.training:
+            return self.forward_train(x, num_segs, **kwargs)
+        else:
+            return self.forward_val(x, num_segs, **kwargs)
