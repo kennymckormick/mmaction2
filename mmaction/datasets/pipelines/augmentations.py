@@ -1597,11 +1597,22 @@ class GeneratePoseTarget(object):
         all_kps = results['kp']
         all_boxes = results['per_frame_box']
         all_kpscores = results['kpscore']
-        num_frame = all_boxes.shape[0]
+
+        assert all_kps.shape[0] == all_boxes.shape[0]
+        assert all_kps.shape[0] % all_kpscores.shape[0] == 0
+
+        num_seg = all_kps.shape[0] // all_kpscores.shape[0]
+
+        num_frame = all_kpscores.shape[0]
+
+        all_kps_byseg = [
+            all_kps[i * num_frame:(i + 1) * num_frame] for i in range(num_seg)
+        ]
 
         if self.human_rescale:
             original_diag = np.linalg.norm(results['img_shape'])
-            box_diag = np.linalg.norm(all_boxes[:, 2:], axis=1)
+            # we only need one group to set sigma_ratio
+            box_diag = np.linalg.norm(all_boxes[:num_frame, 2:], axis=1)
             sigma_ratio = box_diag / original_diag
         else:
             sigma_ratio = np.ones(num_frame, dtype=np.float32)
@@ -1610,16 +1621,23 @@ class GeneratePoseTarget(object):
         img_h, img_w = results['img_shape']
 
         imgs = []
-        for i in range(num_frame):
-            kps = all_kps[i]
-            kpscores = all_kpscores[i]
-            sigma = sigmas[i]
+        for seg_ind in range(num_seg):
+            all_kps = all_kps_byseg[seg_ind]
+            for i in range(num_frame):
+                kps = all_kps[i]
+                kpscores = all_kpscores[i]
+                sigma = sigmas[i]
 
-            num_kps = kpscores.shape[0]
-            max_values = np.ones(num_kps)
-            if self.use_score:
-                max_values = kpscores
-            imgs.append(
-                self.generate_heatmap(img_h, img_w, kps, sigma, max_values))
+                num_kps = kpscores.shape[0]
+                max_values = np.ones(num_kps)
+                if self.use_score:
+                    max_values = kpscores
+
+                # just keep appending
+                imgs.append(
+                    self.generate_heatmap(img_h, img_w, kps, sigma,
+                                          max_values))
+
         results['imgs'] = np.stack(imgs)
+
         return results
