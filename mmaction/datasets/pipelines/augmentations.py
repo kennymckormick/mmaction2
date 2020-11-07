@@ -1399,7 +1399,7 @@ class PoseThreeCrop(ThreeCrop):
             bbox = [x_offset, y_offset, x_offset + crop_w, y_offset + crop_h]
             crop_bboxes.extend([bbox for _ in range(num_imgs)])
 
-            new_origin = np.array()
+            new_origin = np.array(x_offset, y_offset)
             # append kp
             kps.append(kp - new_origin)
             new_box = cp.deepcopy(box)
