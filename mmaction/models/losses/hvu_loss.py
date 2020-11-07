@@ -125,7 +125,7 @@ class HVULoss(BaseWeightedLoss):
                 category_label = label[:, start_idx:start_idx + num]
 
                 if name == 'action' and self.action_ce:
-                    cls_score = category_score
+                    score = category_score
                     gt_labels = category_label
                     # check that action label is onehot
                     assert torch.all(
@@ -133,16 +133,16 @@ class HVULoss(BaseWeightedLoss):
                             torch.sum(gt_labels, 1),
                             torch.max(gt_labels, 1)[0]))
                     gt_labels = torch.argmax(gt_labels, 1)
-                    category_loss = nn.CrossEntropyLoss()(cls_score, gt_labels)
+                    category_loss = nn.CrossEntropyLoss()(score, gt_labels)
                     # since we use ce loss for action, should also report top1
                     # and top5
-                    topk_acc = top_k_accuracy(cls_score.detach().cpu().numpy(),
+                    topk_acc = top_k_accuracy(score.detach().cpu().numpy(),
                                               gt_labels.detach().cpu().numpy(),
                                               (1, 5))
                     losses['action_top1_acc'] = torch.tensor(
-                        topk_acc[0], device=cls_score.device)
+                        topk_acc[0], device=score.device)
                     losses['action_top5_acc'] = torch.tensor(
-                        topk_acc[1], device=cls_score.device)
+                        topk_acc[1], device=score.device)
                     # If action_ce, the loss is already reduced
                 else:
                     category_loss = F.binary_cross_entropy_with_logits(
