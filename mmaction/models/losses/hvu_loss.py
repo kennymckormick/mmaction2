@@ -118,6 +118,7 @@ class HVULoss(BaseWeightedLoss):
         elif self.loss_type == 'individual':
             losses = {}
             loss_weights = {}
+            accs = {}
             for name, num, start_idx in zip(self.categories,
                                             self.category_nums,
                                             self.category_startidx):
@@ -139,9 +140,9 @@ class HVULoss(BaseWeightedLoss):
                     topk_acc = top_k_accuracy(score.detach().cpu().numpy(),
                                               gt_labels.detach().cpu().numpy(),
                                               (1, 5))
-                    losses['action_top1_acc'] = torch.tensor(
+                    accs['action_top1_acc'] = torch.tensor(
                         topk_acc[0], device=score.device)
-                    losses['action_top5_acc'] = torch.tensor(
+                    accs['action_top5_acc'] = torch.tensor(
                         topk_acc[1], device=score.device)
                     # If action_ce, the loss is already reduced
                 else:
@@ -203,4 +204,5 @@ class HVULoss(BaseWeightedLoss):
                     for k, v in loss_weights.items()
                 })
             # Note that the loss weights are just for reference.
+            losses.update(accs)
             return losses
