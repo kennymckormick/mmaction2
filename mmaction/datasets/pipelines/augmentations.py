@@ -1366,7 +1366,7 @@ class ThreeCrop(object):
 class PoseThreeCrop(ThreeCrop):
 
     def __init__(self, crop_size):
-        super().__init__(crop_size=crop_size, lazy=False)
+        super().__init__(crop_size=crop_size)
 
     def __call__(self, results):
         img_h, img_w = results['img_shape']
