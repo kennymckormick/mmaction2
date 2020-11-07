@@ -1,10 +1,14 @@
 import torch
 import torch.nn.functional as F
+from torch import nn
 
 from ..registry import LOSSES
 from .base import BaseWeightedLoss
 
 
+# Since the label category 'action' can also be single-label, we add the
+# option action_ce to let class action use CrossEntropy Loss
+# Note that we find action by category_name, so the order must be correct
 @LOSSES.register_module()
 class HVULoss(BaseWeightedLoss):
     """Calculate the BCELoss for HVU.
@@ -28,6 +32,9 @@ class HVULoss(BaseWeightedLoss):
             as negative samples.
         reduction (str): Reduction way. Choices are 'mean' or 'sum'. Default:
             'mean'.
+        action_ce (bool): Use CrossEntropy Loss for action. Default: False.
+            Only works when loss_type is set as 'individual'. If action_ce is
+            set as True, all videos should have the category 'action'.
         loss_weight (float): The loss weight. Default: 1.0.
     """
 
@@ -39,12 +46,14 @@ class HVULoss(BaseWeightedLoss):
                  loss_type='all',
                  with_mask=False,
                  reduction='mean',
+                 action_ce=False,
                  loss_weight=1.0):
 
         super().__init__(loss_weight)
         self.categories = categories
         self.category_nums = category_nums
         self.category_loss_weights = category_loss_weights
+        self.action_ce = action_ce
         assert len(self.category_nums) == len(self.category_loss_weights)
         for loss_weight in self.category_loss_weights:
             assert loss_weight >= 0
@@ -96,8 +105,14 @@ class HVULoss(BaseWeightedLoss):
                                             self.category_startidx):
                 category_score = cls_score[:, start_idx:start_idx + num]
                 category_label = label[:, start_idx:start_idx + num]
-                category_loss = F.binary_cross_entropy_with_logits(
-                    category_score, category_label, reduction='none')
+
+                if name == 'action' and self.action_ce:
+                    pred = nn.LogSoftmax()(category_score)
+                    loss_func = nn.KLDivLoss(reduction='batchmean')
+                    category_loss = loss_func(pred, category_label)
+                else:
+                    category_loss = F.binary_cross_entropy_with_logits(
+                        category_score, category_label, reduction='none')
                 if self.reduction == 'mean':
                     category_loss = torch.mean(category_loss, dim=1)
                 elif self.reduction == 'sum':
@@ -121,11 +136,9 @@ class HVULoss(BaseWeightedLoss):
                 # the loss used for backward in the losses dictionary
                 losses[f'{name}_LOSS'] = category_loss
                 loss_weights[f'{name}_LOSS'] = self.category_loss_weights[idx]
-            # Normalizing on all categories, exist or not exist
-            # the loss might be smaller for some iterations
-            loss_weights_sum = sum(self.category_loss_weights)
+            loss_weight_sum = sum(loss_weights.values())
             loss_weights = {
-                k: v / loss_weights_sum
+                k: v / loss_weight_sum
                 for k, v in loss_weights.items()
             }
             loss_cls = sum([losses[k] * loss_weights[k] for k in losses])
