@@ -5,7 +5,7 @@ import mmcv
 import numpy as np
 from mmcv.utils import print_log
 
-from ..core import mean_average_precision
+from ..core import mean_average_precision, mean_class_accuracy, top_k_accuracy
 from .base import BaseDataset
 from .registry import DATASETS
 
@@ -59,6 +59,8 @@ class HVUDataset(BaseDataset):
         tag_category_nums (list[int]): List of number of tags in each category.
         filename_tmpl (str | None): Template for each filename. If set to None,
             video dataset is used. Default: None.
+        action_ce (bool): Use cross entropy loss for 'action', if set as True,
+            will use Top-k accuracy and mean_class_accuracy to evaluate action.
         **kwargs: Keyword arguments for ``BaseDataset``.
     """
 
@@ -68,6 +70,7 @@ class HVUDataset(BaseDataset):
                  tag_categories,
                  tag_category_nums,
                  filename_tmpl=None,
+                 action_ce=False,
                  **kwargs):
         assert len(tag_categories) == len(tag_category_nums)
         self.tag_categories = tag_categories
@@ -82,6 +85,7 @@ class HVUDataset(BaseDataset):
                                   self.tag_category_nums[i])
         self.category2startidx = dict(zip(tag_categories, self.start_idx))
         self.start_index = kwargs.pop('start_index', 0)
+        self.action_ce = action_ce
         self.dataset_type = None
         super().__init__(
             ann_file, pipeline, start_index=self.start_index, **kwargs)
@@ -179,11 +183,29 @@ class HVUDataset(BaseDataset):
                 if category in gt_label
             ]
 
-            gts = [self.label2array(num, item) for item in gts]
+            if category == 'action' and self.action_ce:
+                # should be single label
+                assert sum([1 for x in gts if len(x) == 1]) == len(gts)
+                gt_labels = [x[0] for x in gts]
+                topk = (1, 5)
+                top_k_acc = top_k_accuracy(preds, gt_labels, topk)
+                log_msg = []
+                for k, acc in zip(topk, top_k_acc):
+                    eval_results[f'action_top{k}_acc'] = acc
+                    log_msg.append(f'\naction_top{k}_acc\t{acc:.4f}')
+                log_msg = ''.join(log_msg)
+                print_log(log_msg, logger=logger)
 
-            mAP = mean_average_precision(preds, gts)
-            eval_results[f'{category}_mAP'] = mAP
-            log_msg = f'\n{category}_mAP\t{mAP:.4f}'
-            print_log(log_msg, logger=logger)
+                mean_acc = mean_class_accuracy(preds, gt_labels)
+                eval_results['action_mean_class_accuracy'] = mean_acc
+                log_msg = f'\naction_mean_acc\t{mean_acc:.4f}'
+                print_log(log_msg, logger=logger)
+            else:
+                gts = [self.label2array(num, item) for item in gts]
+
+                mAP = mean_average_precision(preds, gts)
+                eval_results[f'{category}_mAP'] = mAP
+                log_msg = f'\n{category}_mAP\t{mAP:.4f}'
+                print_log(log_msg, logger=logger)
 
         return eval_results
