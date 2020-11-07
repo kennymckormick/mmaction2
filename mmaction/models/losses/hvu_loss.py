@@ -24,6 +24,9 @@ class HVULoss(BaseWeightedLoss):
             applies only if `loss_type == 'individual'`. The loss weights will
             be normalized so that the sum equals to 1, so that you can give any
             positive number as loss weight. Default: (1, 1, 1, 1, 1, 1).
+        adjust_by (str): Adjust loss by the loss of one tag_category. If
+            adjust_by is set, the final loss_weight doesn't necessarily sum to
+            1. Default: None.
         loss_type (str): The loss type we calculate, we can either calculate
             the BCELoss for all tags, or calculate the BCELoss for tags in each
             category. Choices are 'individual' or 'all'. Default: 'all'.
@@ -44,6 +47,7 @@ class HVULoss(BaseWeightedLoss):
                              'object', 'scene'),
                  category_nums=(739, 117, 291, 69, 1679, 248),
                  category_loss_weights=(1, 1, 1, 1, 1, 1),
+                 adjust_by=None,
                  loss_type='all',
                  with_mask=False,
                  reduction='mean',
@@ -54,10 +58,23 @@ class HVULoss(BaseWeightedLoss):
         self.categories = categories
         self.category_nums = category_nums
         self.category_loss_weights = category_loss_weights
+        self.adjust_by = adjust_by
+        assert self.adjust_by in self.categories
+
         self.action_ce = action_ce
         assert len(self.category_nums) == len(self.category_loss_weights)
-        for loss_weight in self.category_loss_weights:
-            assert loss_weight >= 0
+
+        divide_lw_by = None
+        for name, lw in zip(categories, category_loss_weights):
+            assert lw >= 0
+            if self.adjust_by is not None and name == self.adjust_by:
+                assert lw > 0
+                divide_lw_by = lw
+        if self.adjust_by is not None:
+            self.category_loss_weights = [
+                x / divide_lw_by for x in category_loss_weights
+            ]
+
         self.loss_type = loss_type
         self.with_mask = with_mask
         self.reduction = reduction
@@ -152,17 +169,37 @@ class HVULoss(BaseWeightedLoss):
                 # the loss used for backward in the losses dictionary
                 losses[f'{name}_LOSS'] = category_loss
                 loss_weights[f'{name}_LOSS'] = self.category_loss_weights[idx]
-            loss_weight_sum = sum(loss_weights.values())
-            loss_weights = {
-                k: v / loss_weight_sum
-                for k, v in loss_weights.items()
-            }
-            loss_cls = sum([losses[k] * loss_weights[k] for k in losses])
-            losses['loss_cls'] = loss_cls
-            # We also trace the loss weights
-            losses.update({
-                k + '_weight': torch.tensor(v).to(losses[k].device)
-                for k, v in loss_weights.items()
-            })
+
+            if self.adjust_by is not None:
+                basic_loss = losses[f'{self.adjust_by}_LOSS']
+                loss_weights_2 = {
+                    k: (basic_loss / v).item()
+                    for k, v in losses.items()
+                }
+                new_loss_weights = {
+                    k: loss_weights[k] * loss_weights_2[k]
+                    for k in loss_weights
+                }
+                loss_cls = sum(
+                    [losses[k] * new_loss_weights[k] for k in losses])
+                losses['loss_cls'] = loss_cls
+                # the new_loss_weights is printed
+                losses.update({
+                    k + '_weight': torch.tensor(v).to(losses[k].device)
+                    for k, v in new_loss_weights.items()
+                })
+            else:
+                loss_weight_sum = sum(loss_weights.values())
+                loss_weights = {
+                    k: v / loss_weight_sum
+                    for k, v in loss_weights.items()
+                }
+                loss_cls = sum([losses[k] * loss_weights[k] for k in losses])
+                losses['loss_cls'] = loss_cls
+                # We also trace the loss weights
+                losses.update({
+                    k + '_weight': torch.tensor(v).to(losses[k].device)
+                    for k, v in loss_weights.items()
+                })
             # Note that the loss weights are just for reference.
             return losses
