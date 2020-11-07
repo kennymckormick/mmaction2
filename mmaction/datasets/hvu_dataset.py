@@ -186,9 +186,9 @@ class HVUDataset(BaseDataset):
             if category == 'action' and self.action_ce:
                 # should be single label
                 assert sum([1 for x in gts if len(x) == 1]) == len(gts)
-                gt_labels = [x[0] for x in gts]
+                action_gt_labels = [x[0] for x in gts]
                 topk = (1, 5)
-                top_k_acc = top_k_accuracy(preds, gt_labels, topk)
+                top_k_acc = top_k_accuracy(preds, action_gt_labels, topk)
                 log_msg = []
                 for k, acc in zip(topk, top_k_acc):
                     eval_results[f'action_top{k}_acc'] = acc
@@ -196,7 +196,7 @@ class HVUDataset(BaseDataset):
                 log_msg = ''.join(log_msg)
                 print_log(log_msg, logger=logger)
 
-                mean_acc = mean_class_accuracy(preds, gt_labels)
+                mean_acc = mean_class_accuracy(preds, action_gt_labels)
                 eval_results['action_mean_class_accuracy'] = mean_acc
                 log_msg = f'\naction_mean_acc\t{mean_acc:.4f}'
                 print_log(log_msg, logger=logger)
