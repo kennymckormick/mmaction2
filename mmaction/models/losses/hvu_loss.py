@@ -143,13 +143,14 @@ class HVULoss(BaseWeightedLoss):
                         topk_acc[0], device=cls_score.device)
                     losses['action_top5_acc'] = torch.tensor(
                         topk_acc[1], device=cls_score.device)
+                    # If action_ce, the loss is already reduced
                 else:
                     category_loss = F.binary_cross_entropy_with_logits(
                         category_score, category_label, reduction='none')
-                if self.reduction == 'mean':
-                    category_loss = torch.mean(category_loss, dim=1)
-                elif self.reduction == 'sum':
-                    category_loss = torch.sum(category_loss, dim=1)
+                    if self.reduction == 'mean':
+                        category_loss = torch.mean(category_loss, dim=1)
+                    elif self.reduction == 'sum':
+                        category_loss = torch.sum(category_loss, dim=1)
 
                 idx = self.categories.index(name)
                 if self.with_mask:
