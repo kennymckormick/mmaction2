@@ -1611,6 +1611,8 @@ class GeneratePoseTarget(object):
 
         if self.human_rescale:
             original_diag = np.linalg.norm(results['img_shape'])
+            # should convert all_boxes to np.float32 to avoid overflow
+            all_boxes = all_boxes.astype(np.float32)
             # we only need one group to set sigma_ratio
             box_diag = np.linalg.norm(all_boxes[:num_frame, 2:], axis=1)
             sigma_ratio = box_diag / original_diag
