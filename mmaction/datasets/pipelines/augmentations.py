@@ -4,6 +4,7 @@ from collections.abc import Sequence
 
 import mmcv
 import numpy as np
+from shapely import LineString, Point
 from torch.nn.modules.utils import _pair
 
 from ..registry import PIPELINES
@@ -1558,10 +1559,20 @@ class MultiGroupCrop(object):
 @PIPELINES.register_module()
 class GeneratePoseTarget(object):
 
-    def __init__(self, sigma=2, human_rescale=False, use_score=False):
+    def __init__(self,
+                 sigma=2,
+                 human_rescale=False,
+                 use_score=False,
+                 with_limb=False):
+
         self.sigma = sigma
         self.human_rescale = human_rescale
         self.use_score = use_score
+        self.with_limb = with_limb
+        # skeletons corresponding to the 13 keypoints
+        # we only visualize 4 limbs (8 additional channels)
+        self.skeletons = [[1, 3], [3, 5], [2, 4], [4, 6], [7, 9], [9, 11],
+                          [8, 10], [10, 12]]
 
     def generate_a_heatmap(self, img_h, img_w, center, sigma, max_value):
         heatmap = np.zeros([img_h, img_w], dtype=np.float32)
@@ -1582,6 +1593,45 @@ class GeneratePoseTarget(object):
         patch = np.exp(-((x - mu_x)**2 + (y - mu_y)**2) / 2 / sigma**2)
         patch = patch * max_value
         heatmap[st_y:ed_y, st_x:ed_x] = patch
+        return heatmap
+
+    # ongoing !!!
+    def generate_a_limb_heatmap(self, img_h, img_w, start, end, sigma,
+                                start_value, end_value):
+        heatmap = np.zeros([img_h, img_w], dtype=np.float32)
+        min_x, max_x = min(start[0], end[0]), max(start[0], end[0])
+        min_y, max_y = min(start[1], end[1]), max(start[1], end[1])
+        min_x = max(int(min_x - 3 * sigma), 0)
+        max_x = min(int(max_x + 3 * sigma) + 2, img_w)
+        min_y = max(int(min_y - 3 * sigma), 0)
+        max_y = min(int(max_y + 3 * sigma) + 2, img_h)
+
+        x_range = np.arange(min_x, max_x, 1, np.float32)
+        y_range = np.arange(min_y, max_y, 1, np.float32)
+        if not (len(x_range) and len(y_range)):
+            return heatmap
+
+        start = Point(start)
+        end = Point(end)
+        limb = LineString([start, end])
+
+        for x in x_range:
+            for y in y_range:
+                point = Point(x, y)
+                distance = point.distance(limb)
+                val = np.exp(-distance**2 / 2 / sigma**2)
+                # use threshold 1e-3
+                distance_start = point.distance(start)
+                distance_end = point.distance(end)
+
+                residual_start = np.sqrt(distance_start**2 - distance**2)
+                residual_end = np.sqrt(distance_end**2 - distance**2)
+                coeff = residual_start / (residual_start + residual_end)
+                coeff = start_value + coeff * (end_value - start_value)
+
+                val = val * coeff
+                if val > 1e-4:
+                    heatmap[x, y] = val
         return heatmap
 
     # sigma should have already been adjusted
