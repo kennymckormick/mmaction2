@@ -1595,7 +1595,6 @@ class GeneratePoseTarget(object):
         heatmap[st_y:ed_y, st_x:ed_x] = patch
         return heatmap
 
-    # ongoing !!!
     def generate_a_limb_heatmap(self, img_h, img_w, start, end, sigma,
                                 start_value, end_value):
         heatmap = np.zeros([img_h, img_w], dtype=np.float32)
@@ -1630,6 +1629,8 @@ class GeneratePoseTarget(object):
                 coeff = start_value + coeff * (end_value - start_value)
 
                 val = val * coeff
+
+                # apply a threshold
                 if val > 1e-4:
                     heatmap[x, y] = val
         return heatmap
@@ -1640,6 +1641,18 @@ class GeneratePoseTarget(object):
         for kp, value in zip(kps, max_values):
             heatmaps.append(
                 self.generate_a_heatmap(img_h, img_w, kp, sigma, value))
+        # Also visualize limb
+        if self.with_limb:
+            for limb in self.skeletons:
+                start_idx, end_idx = limb
+                start, end = kps[start_idx], kps[end_idx]
+                start_value = max_values[start_idx]
+                end_value = max_values[end_idx]
+                heatmap = self.generate_a_limb_heatmap(img_h, img_w, start,
+                                                       end, sigma, start_value,
+                                                       end_value)
+                heatmaps.append(heatmap)
+
         return np.stack(heatmaps, axis=-1)
 
     # Just use the low performance implementation
