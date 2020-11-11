@@ -1627,6 +1627,10 @@ class GeneratePoseTarget(object):
         d2_end = ((x - end[0])**2 + (y - end[1])**2)
 
         d2_ab = ((start[0] - end[0])**2 + (start[1] - end[1])**2)
+        if d2_ab < 1:
+            return self.generate_a_heatmap(img_h, img_w, start, sigma,
+                                           start_value)
+
         coeff = (d2_start - d2_end + d2_ab) / 2. / d2_ab
 
         a_dominate = coeff <= 0
