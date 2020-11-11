@@ -4,7 +4,6 @@ from collections.abc import Sequence
 
 import mmcv
 import numpy as np
-from shapely.geometry import LineString, Point
 from torch.nn.modules.utils import _pair
 
 from ..registry import PIPELINES
@@ -1604,41 +1603,51 @@ class GeneratePoseTarget(object):
     def generate_a_limb_heatmap(self, img_h, img_w, start, end, sigma,
                                 start_value, end_value):
         heatmap = np.zeros([img_h, img_w], dtype=np.float32)
+
+        start, end = np.array(start), np.array(end)
         min_x, max_x = min(start[0], end[0]), max(start[0], end[0])
         min_y, max_y = min(start[1], end[1]), max(start[1], end[1])
+
         min_x = max(int(min_x - 3 * sigma), 0)
         max_x = min(int(max_x + 3 * sigma) + 2, img_w)
         min_y = max(int(min_y - 3 * sigma), 0)
         max_y = min(int(max_y + 3 * sigma) + 2, img_h)
 
-        x_range = range(min_x, max_x)
-        y_range = range(min_y, max_y)
-        if not (len(x_range) and len(y_range)):
+        x = np.arange(min_x, max_x, 1, np.float32)
+        y = np.arange(min_y, max_y, 1, np.float32)
+
+        if not (len(x) and len(y)):
             return heatmap
 
-        start = Point(start)
-        end = Point(end)
-        limb = LineString([start, end])
+        y = y[:, None]
+        x_0 = np.zeros_like(x)
+        y_0 = np.zeros_like(y)
 
-        for x in x_range:
-            for y in y_range:
-                point = Point(x, y)
-                distance = point.distance(limb)
-                val = np.exp(-distance**2 / 2 / sigma**2)
-                # use threshold 1e-3
-                distance_start = point.distance(start)
-                distance_end = point.distance(end)
+        d2_start = ((x - start[0])**2 + (y - start[1])**2)
+        d2_end = ((x - end[0])**2 + (y - end[1])**2)
 
-                residual_start = np.sqrt(distance_start**2 - distance**2)
-                residual_end = np.sqrt(distance_end**2 - distance**2)
-                coeff = residual_start / (residual_start + residual_end)
-                coeff = start_value + coeff * (end_value - start_value)
+        d2_ab = ((start[0] - end[0])**2 + (start[1] - end[1])**2)
+        coeff = (d2_start - d2_end + d2_ab) / 2. / d2_ab
 
-                val = val * coeff
+        a_dominate = coeff <= 0
+        b_dominate = coeff >= 1
+        seg_dominate = 1 - a_dominate - b_dominate
 
-                # apply a threshold
-                if val > 1e-4:
-                    heatmap[x, y] = val
+        position = np.stack([x + y_0, y + x_0], axis=-1)
+        projection = start + np.stack([coeff, coeff], axis=-1) * (end - start)
+        d2_line = position - projection
+        d2_line = d2_line[:, :, 0]**2 + d2_line[:, :, 1]**2
+        d2_seg = (
+            a_dominate * d2_start + b_dominate * d2_end +
+            seg_dominate * d2_line)
+
+        value_coeff = (
+            a_dominate * start_value + b_dominate * end_value + seg_dominate *
+            (start_value + coeff * (end_value - start_value)))
+        patch = np.exp(-d2_seg / 2. / sigma**2)
+        patch = patch * value_coeff
+
+        heatmap[min_y:max_y, min_x:max_x] = patch
         return heatmap
 
     # sigma should have already been adjusted
