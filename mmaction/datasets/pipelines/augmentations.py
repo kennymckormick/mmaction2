@@ -1563,12 +1563,18 @@ class GeneratePoseTarget(object):
                  sigma=2,
                  human_rescale=False,
                  use_score=False,
+                 with_kp=True,
                  with_limb=False):
 
         self.sigma = sigma
         self.human_rescale = human_rescale
         self.use_score = use_score
+        self.with_kp = with_kp
         self.with_limb = with_limb
+
+        assert self.with_kp or self.with_limb, (
+            'At least one of "with_limb" '
+            'and "with_kp" should be set as True.')
         # skeletons corresponding to the 13 keypoints
         # we only visualize 4 limbs (8 additional channels)
         self.skeletons = [[1, 3], [3, 5], [2, 4], [4, 6], [7, 9], [9, 11],
@@ -1638,10 +1644,10 @@ class GeneratePoseTarget(object):
     # sigma should have already been adjusted
     def generate_heatmap(self, img_h, img_w, kps, sigma, max_values):
         heatmaps = []
-        for kp, value in zip(kps, max_values):
-            heatmaps.append(
-                self.generate_a_heatmap(img_h, img_w, kp, sigma, value))
-        # Also visualize limb
+        if self.with_kp:
+            for kp, value in zip(kps, max_values):
+                heatmaps.append(
+                    self.generate_a_heatmap(img_h, img_w, kp, sigma, value))
         if self.with_limb:
             for limb in self.skeletons:
                 start_idx, end_idx = limb
