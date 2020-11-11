@@ -4,7 +4,7 @@ from collections.abc import Sequence
 
 import mmcv
 import numpy as np
-from shapely import LineString, Point
+from shapely.geometry import LineString, Point
 from torch.nn.modules.utils import _pair
 
 from ..registry import PIPELINES
@@ -1611,8 +1611,8 @@ class GeneratePoseTarget(object):
         min_y = max(int(min_y - 3 * sigma), 0)
         max_y = min(int(max_y + 3 * sigma) + 2, img_h)
 
-        x_range = np.arange(min_x, max_x, 1, np.float32)
-        y_range = np.arange(min_y, max_y, 1, np.float32)
+        x_range = range(min_x, max_x)
+        y_range = range(min_y, max_y)
         if not (len(x_range) and len(y_range)):
             return heatmap
 
