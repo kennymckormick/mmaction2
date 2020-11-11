@@ -1602,6 +1602,7 @@ class GeneratePoseTarget(object):
             assign(x_int + 1, y_int, x_res * (1 - y_res))
             assign(x_int, y_int + 1, (1 - x_res) * y_res)
             assign(x_int + 1, y_int + 1, x_res * y_res)
+            heatmap *= max_value
             return heatmap
 
         # 3 sigma is OK
