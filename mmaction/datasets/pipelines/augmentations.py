@@ -1562,14 +1562,21 @@ class GeneratePoseTarget(object):
                  sigma=2,
                  human_rescale=False,
                  use_score=False,
+                 bilinear=False,
                  with_kp=True,
                  with_limb=False):
 
         self.sigma = sigma
         self.human_rescale = human_rescale
         self.use_score = use_score
+        self.bilinear = bilinear
         self.with_kp = with_kp
         self.with_limb = with_limb
+
+        if self.bilinear:
+            self.sigma = None
+            self.human_rescale = False
+            self.with_limb = False
 
         assert self.with_kp or self.with_limb, (
             'At least one of "with_limb" '
@@ -1582,6 +1589,21 @@ class GeneratePoseTarget(object):
     def generate_a_heatmap(self, img_h, img_w, center, sigma, max_value):
         heatmap = np.zeros([img_h, img_w], dtype=np.float32)
         mu_x, mu_y = center[0], center[1]
+
+        if self.bilinear:
+            x_int, y_int = int(mu_x), int(mu_y)
+            x_res, y_res = mu_x - x_int, mu_y - y_int
+
+            def assign(x, y, val):
+                if 0 <= y < img_h and 0 <= x < img_w:
+                    heatmap[y, x] = val
+
+            assign(x_int, y_int, (1 - x_res) * (1 - y_res))
+            assign(x_int + 1, y_int, x_res * (1 - y_res))
+            assign(x_int, y_int + 1, (1 - x_res) * y_res)
+            assign(x_int + 1, y_int + 1, x_res * y_res)
+            return heatmap
+
         # 3 sigma is OK
         st_x = max(int(mu_x - 3 * sigma), 0)
         ed_x = min(int(mu_x + 3 * sigma) + 2, img_w)
@@ -1691,17 +1713,21 @@ class GeneratePoseTarget(object):
             all_kps[i * num_frame:(i + 1) * num_frame] for i in range(num_seg)
         ]
 
-        if self.human_rescale:
-            original_diag = np.linalg.norm(results['img_shape'])
-            # should convert all_boxes to np.float32 to avoid overflow
-            all_boxes = all_boxes.astype(np.float32)
-            # we only need one group to set sigma_ratio
-            box_diag = np.linalg.norm(all_boxes[:num_frame, 2:], axis=1)
-            sigma_ratio = box_diag / original_diag
-        else:
-            sigma_ratio = np.ones(num_frame, dtype=np.float32)
+        if self.sigma is not None:
+            if self.human_rescale:
+                original_diag = np.linalg.norm(results['img_shape'])
+                # should convert all_boxes to np.float32 to avoid overflow
+                all_boxes = all_boxes.astype(np.float32)
+                # we only need one group to set sigma_ratio
+                box_diag = np.linalg.norm(all_boxes[:num_frame, 2:], axis=1)
+                sigma_ratio = box_diag / original_diag
+            else:
+                sigma_ratio = np.ones(num_frame, dtype=np.float32)
 
-        sigmas = self.sigma * sigma_ratio
+            sigmas = self.sigma * sigma_ratio
+        else:
+            sigmas = [None] * num_frame
+
         img_h, img_w = results['img_shape']
 
         imgs = []
