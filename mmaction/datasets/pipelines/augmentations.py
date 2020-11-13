@@ -1569,8 +1569,7 @@ class GeneratePoseTarget(object):
                  use_score=False,
                  with_kp=True,
                  with_limb=False,
-                 skeletons=[[1, 3], [3, 5], [2, 4], [4, 6], [7, 9], [9, 11],
-                            [8, 10], [10, 12]]):
+                 skeletons=[]):
 
         self.sigma = sigma
         self.use_score = use_score
