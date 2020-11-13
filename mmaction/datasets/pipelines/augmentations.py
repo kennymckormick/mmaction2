@@ -887,12 +887,18 @@ class RGBFlowFlip(object):
 class PoseFlip(object):
     _directions = ['horizontal', 'vertical']
 
-    def __init__(self, flip_ratio=0.5, direction='horizontal'):
+    def __init__(self,
+                 flip_ratio=0.5,
+                 direction='horizontal',
+                 left=list(range(1, 13, 2)),
+                 right=list(range(2, 13, 2))):
         if direction not in self._directions:
             raise ValueError(f'Direction {direction} is not supported. '
                              f'Currently support ones are {self._directions}')
         self.flip_ratio = flip_ratio
         self.direction = direction
+        self.left = left
+        self.right = right
 
     def __call__(self, results):
         modality = results['modality']
@@ -909,6 +915,13 @@ class PoseFlip(object):
         img_width = results['img_shape'][0]
         if flip:
             results['kp'][:, :, 0] = img_width - results['kp'][:, :, 0]
+
+            # the left & right should also be flipped
+            for left_ind, right_ind in zip(self.left, self.right):
+                tmp = cp.deepcopy(results['kp'][:, left_ind])
+                results['kp'][:, left_ind] = results['kp'][:, right_ind]
+                results['kp'][:, right_ind] = tmp
+
             bbox = results['per_frame_box']
             old_right = bbox[:, 0] + bbox[:, 2]
             new_left = img_width - old_right
