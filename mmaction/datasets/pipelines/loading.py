@@ -909,6 +909,7 @@ class RawFrameDecode(object):
         return results
 
 
+# Support Pose w. MultiPerson
 @PIPELINES.register_module()
 class PoseDecode(object):
     """Load and decode pose with given indices.
@@ -928,9 +929,21 @@ class PoseDecode(object):
 
         offset = results.get('offset', 0)
         frame_inds = results['frame_inds'] + offset
-        results['per_frame_box'] = results['per_frame_box'][frame_inds]
-        results['kp'] = results['kp'][frame_inds]
-        results['kpscore'] = results['kpscore'][frame_inds]
+
+        assert results['num_person'] == len(results['per_frame_box']) == len(
+            results['kp']) == len(results['kpscore'])
+
+        # the three items are lists
+        # for storing, we use fp16, here we can convert them to float32
+        results['per_frame_box'] = [
+            x[frame_inds].astype(np.float32) for x in results['per_frame_box']
+        ]
+        results['kp'] = [
+            x[frame_inds].astype(np.float32) for x in results['kp']
+        ]
+        results['kpscore'] = [
+            x[frame_inds].astype(np.float32) for x in results['kpscore']
+        ]
 
         return results
 

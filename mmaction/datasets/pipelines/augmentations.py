@@ -9,7 +9,7 @@ from torch.nn.modules.utils import _pair
 from ..registry import PIPELINES
 
 # Pose related modules include PoseRandomResizedCrop, PoseMultiScaleCrop,
-# PoseResize, PoseFlip, PoseCenterCrop, PoseThreeCrop
+# PoseResize, PoseFlip, PoseCenterCrop
 
 
 def _init_lazy_if_proper(results, lazy):
@@ -299,7 +299,7 @@ class PoseRandomResizedCrop(RandomResizedCrop):
     """RandomResizedCrop for Pose Data."""
 
     def __init__(self,
-                 area_range=(0.25, 1.0),
+                 area_range=(0.56, 1.0),
                  aspect_ratio_range=(3 / 4, 4 / 3)):
         super().__init__(
             area_range=area_range,
@@ -325,8 +325,21 @@ class PoseRandomResizedCrop(RandomResizedCrop):
 
         # The new origin is (left, top)
         new_origin = np.array([left, top])
-        results['kp'] -= new_origin
-        results['per_frame_box'][:, :2] -= new_origin
+
+        # OK, finally we look at kpscore to decide whether to visualize
+        results['kp'] = [kp - new_origin for kp in results['kp']]
+
+        new_per_frame_box = []
+        for item in results['per_frame_box']:
+            box_invalid_mask = np.isclose(item, np.ones_like(item) * -1)
+            # all four value should be close to -1
+            box_invalid_mask = np.all(box_invalid_mask, axis=1)
+            box_invalid_mask = np.stack([box_invalid_mask] * 4, axis=-1)
+            new_item = cp.deepcopy(item)
+            new_item[:, :2] -= new_origin
+            new_per_frame_box.append(item * box_invalid_mask + new_item *
+                                     (1 - box_invalid_mask))
+        results['per_frame_box'] = new_per_frame_box
         return results
 
     def __repr__(self):
@@ -555,9 +568,20 @@ class PoseMultiScaleCrop(object):
         results['scales'] = self.scales
 
         new_origin = np.array([x_offset, y_offset])
-        results['kp'] -= new_origin
-        results['per_frame_box'][:, :2] -= new_origin
+        # OK, finally we look at kpscore to decide whether to visualize
+        results['kp'] = [kp - new_origin for kp in results['kp']]
 
+        new_per_frame_box = []
+        for item in results['per_frame_box']:
+            box_invalid_mask = np.isclose(item, np.ones_like(item) * -1)
+            # all four value should be close to -1
+            box_invalid_mask = np.all(box_invalid_mask, axis=1)
+            box_invalid_mask = np.stack([box_invalid_mask] * 4, axis=-1)
+            new_item = cp.deepcopy(item)
+            new_item[:, :2] -= new_origin
+            new_per_frame_box.append(item * box_invalid_mask + new_item *
+                                     (1 - box_invalid_mask))
+        results['per_frame_box'] = new_per_frame_box
         return results
 
     def __repr__(self):
@@ -748,11 +772,21 @@ class PoseResize(object):
         results['keep_ratio'] = self.keep_ratio
         results['scale_factor'] = results['scale_factor'] * self.scale_factor
 
-        # should be OK
-        results['kp'] *= self.scale_factor
-        # x and w
-        results['per_frame_box'][:, 0::2] *= self.scale_factor[0]
-        results['per_frame_box'][:, 1::2] *= self.scale_factor[1]
+        # OK, finally we look at kpscore to decide whether to visualize
+        results['kp'] = [x * self.scale_factor for x in results['kp']]
+
+        new_per_frame_box = []
+        for item in results['per_frame_box']:
+            box_invalid_mask = np.isclose(item, np.ones_like(item) * -1)
+            # all four value should be close to -1
+            box_invalid_mask = np.all(box_invalid_mask, axis=1)
+            box_invalid_mask = np.stack([box_invalid_mask] * 4, axis=-1)
+            new_item = cp.deepcopy(item)
+            new_item[:, 0::2] *= self.scale_factor[0]
+            new_item[:, 1::2] *= self.scale_factor[1]
+            new_per_frame_box.append(item * box_invalid_mask + new_item *
+                                     (1 - box_invalid_mask))
+        results['per_frame_box'] = new_per_frame_box
         return results
 
     def __repr__(self):
@@ -914,19 +948,26 @@ class PoseFlip(object):
 
         img_width = results['img_shape'][0]
         if flip:
-            results['kp'][:, :, 0] = img_width - results['kp'][:, :, 0]
+            for item in results['kp']:
+                item[:, :, 0] = img_width - item[:, :, 0]
+                for left_ind, right_ind in zip(self.left, self.right):
+                    tmp = cp.deepcopy(item[:, left_ind])
+                    item[:, left_ind] = item[:, right_ind]
+                    item[:, right_ind] = tmp
 
-            # the left & right should also be flipped
-            for left_ind, right_ind in zip(self.left, self.right):
-                tmp = cp.deepcopy(results['kp'][:, left_ind])
-                results['kp'][:, left_ind] = results['kp'][:, right_ind]
-                results['kp'][:, right_ind] = tmp
-
-            bbox = results['per_frame_box']
-            old_right = bbox[:, 0] + bbox[:, 2]
-            new_left = img_width - old_right
-            bbox[:, 0] = new_left
-            results['per_frame_box'] = bbox
+            new_per_frame_box = []
+            for item in results['per_frame_box']:
+                box_invalid_mask = np.isclose(item, np.ones_like(item) * -1)
+                # all four value should be close to -1
+                box_invalid_mask = np.all(box_invalid_mask, axis=1)
+                box_invalid_mask = np.stack([box_invalid_mask] * 4, axis=-1)
+                new_item = cp.deepcopy(item)
+                old_right = new_item[:, 0] + new_item[:, 2]
+                new_left = img_width - old_right
+                new_item[:, 0] = new_left
+                new_per_frame_box.append(item * box_invalid_mask + new_item *
+                                         (1 - box_invalid_mask))
+            results['per_frame_box'] = new_per_frame_box
 
         return results
 
@@ -1296,8 +1337,19 @@ class PoseCenterCrop(CenterCrop):
         results['img_shape'] = (new_h, new_w)
         new_origin = np.array([left, top])
 
-        results['kp'] -= new_origin
-        results['per_frame_box'][:, :2] -= new_origin
+        results['kp'] = [kp - new_origin for kp in results['kp']]
+
+        new_per_frame_box = []
+        for item in results['per_frame_box']:
+            box_invalid_mask = np.isclose(item, np.ones_like(item) * -1)
+            # all four value should be close to -1
+            box_invalid_mask = np.all(box_invalid_mask, axis=1)
+            box_invalid_mask = np.stack([box_invalid_mask] * 4, axis=-1)
+            new_item = cp.deepcopy(item)
+            new_item[:, :2] -= new_origin
+            new_per_frame_box.append(item * box_invalid_mask + new_item *
+                                     (1 - box_invalid_mask))
+        results['per_frame_box'] = new_per_frame_box
 
         return results
 
@@ -1373,62 +1425,6 @@ class ThreeCrop(object):
     def __repr__(self):
         repr_str = f'{self.__class__.__name__}(crop_size={self.crop_size})'
         return repr_str
-
-
-@PIPELINES.register_module()
-class PoseThreeCrop(ThreeCrop):
-
-    def __init__(self, crop_size):
-        super().__init__(crop_size=crop_size)
-
-    def __call__(self, results):
-        img_h, img_w = results['img_shape']
-        crop_w, crop_h = self.crop_size
-        assert crop_h == img_h or crop_w == img_w
-
-        if crop_h == img_h:
-            w_step = (img_w - crop_w) // 2
-            offsets = [
-                (0, 0),  # left
-                (2 * w_step, 0),  # right
-                (w_step, 0),  # middle
-            ]
-        elif crop_w == img_w:
-            h_step = (img_h - crop_h) // 2
-            offsets = [
-                (0, 0),  # top
-                (0, 2 * h_step),  # down
-                (0, h_step),  # middle
-            ]
-
-        crop_bboxes = []
-        kp = results['kp']
-        box = results['per_frame_box']
-        kps = []
-        boxes = []
-        num_imgs = kp.shape[0]
-
-        for x_offset, y_offset in offsets:
-            bbox = [x_offset, y_offset, x_offset + crop_w, y_offset + crop_h]
-            crop_bboxes.extend([bbox for _ in range(num_imgs)])
-
-            new_origin = np.array([x_offset, y_offset])
-            # append kp
-            kps.append(kp - new_origin)
-            new_box = cp.deepcopy(box)
-            new_box[:, :2] -= new_origin
-            boxes.append(new_box)
-
-        crop_bboxes = np.array(crop_bboxes)
-        kps = np.concatenate(kps, axis=0)
-        boxes = np.concatenate(boxes, axis=0)
-
-        results['kp'] = kps
-        results['per_frame_box'] = boxes
-        results['crop_bbox'] = crop_bboxes
-        results['img_shape'] = (crop_h, crop_w)
-
-        return results
 
 
 @PIPELINES.register_module()
@@ -1565,147 +1561,141 @@ class MultiGroupCrop(object):
         return repr_str
 
 
-# If human_rescale==True, resize the Gaussian sigma with the coefficient:
-# human box diagonal / image diagonal. The sigma of Gaussian becomes smaller.
-# use_score: use score as the max value of the gaussian
 @PIPELINES.register_module()
 class GeneratePoseTarget(object):
 
     def __init__(self,
                  sigma=2,
-                 human_rescale=False,
                  use_score=False,
-                 bilinear=False,
                  with_kp=True,
-                 with_limb=False):
+                 with_limb=False,
+                 skeletons=[[1, 3], [3, 5], [2, 4], [4, 6], [7, 9], [9, 11],
+                            [8, 10], [10, 12]]):
 
         self.sigma = sigma
-        self.human_rescale = human_rescale
         self.use_score = use_score
-        self.bilinear = bilinear
         self.with_kp = with_kp
         self.with_limb = with_limb
-
-        if self.bilinear:
-            self.sigma = None
-            self.human_rescale = False
-            self.with_limb = False
 
         assert self.with_kp or self.with_limb, (
             'At least one of "with_limb" '
             'and "with_kp" should be set as True.')
-        # skeletons corresponding to the 13 keypoints
-        # we only visualize 4 limbs (8 additional channels)
-        self.skeletons = [[1, 3], [3, 5], [2, 4], [4, 6], [7, 9], [9, 11],
-                          [8, 10], [10, 12]]
+        self.skeletons = skeletons
 
-    def generate_a_heatmap(self, img_h, img_w, center, sigma, max_value):
+    def generate_a_heatmap(self, img_h, img_w, centers, sigma, max_values):
         heatmap = np.zeros([img_h, img_w], dtype=np.float32)
-        mu_x, mu_y = center[0], center[1]
 
-        if self.bilinear:
-            x_int, y_int = int(mu_x), int(mu_y)
-            x_res, y_res = mu_x - x_int, mu_y - y_int
+        for center, max_value in zip(centers, max_values):
+            mu_x, mu_y = center[0], center[1]
 
-            def assign(x, y, val):
-                if 0 <= y < img_h and 0 <= x < img_w:
-                    heatmap[y, x] = val
+            # 3 sigma is OK
+            st_x = max(int(mu_x - 3 * sigma), 0)
+            ed_x = min(int(mu_x + 3 * sigma) + 2, img_w)
+            st_y = max(int(mu_y - 3 * sigma), 0)
+            ed_y = min(int(mu_y + 3 * sigma) + 2, img_h)
+            x = np.arange(st_x, ed_x, 1, np.float32)
+            y = np.arange(st_y, ed_y, 1, np.float32)
 
-            assign(x_int, y_int, (1 - x_res) * (1 - y_res))
-            assign(x_int + 1, y_int, x_res * (1 - y_res))
-            assign(x_int, y_int + 1, (1 - x_res) * y_res)
-            assign(x_int + 1, y_int + 1, x_res * y_res)
-            heatmap *= max_value
-            return heatmap
+            # return an empty heatmap (since not in the image)
+            if not (len(x) and len(y)):
+                return heatmap
+            y = y[:, None]
 
-        # 3 sigma is OK
-        st_x = max(int(mu_x - 3 * sigma), 0)
-        ed_x = min(int(mu_x + 3 * sigma) + 2, img_w)
-        st_y = max(int(mu_y - 3 * sigma), 0)
-        ed_y = min(int(mu_y + 3 * sigma) + 2, img_h)
-        x = np.arange(st_x, ed_x, 1, np.float32)
-        y = np.arange(st_y, ed_y, 1, np.float32)
+            patch = np.exp(-((x - mu_x)**2 + (y - mu_y)**2) / 2 / sigma**2)
+            patch = patch * max_value
+            heatmap[st_y:ed_y,
+                    st_x:ed_x] = np.maximum(heatmap[st_y:ed_y, st_x:ed_x],
+                                            patch)
 
-        # return an empty heatmap (since not in the image)
-        if not (len(x) and len(y)):
-            return heatmap
-        y = y[:, None]
-
-        patch = np.exp(-((x - mu_x)**2 + (y - mu_y)**2) / 2 / sigma**2)
-        patch = patch * max_value
-        heatmap[st_y:ed_y, st_x:ed_x] = patch
         return heatmap
 
-    def generate_a_limb_heatmap(self, img_h, img_w, start, end, sigma,
-                                start_value, end_value):
+    def generate_a_limb_heatmap(self, img_h, img_w, starts, ends, sigma,
+                                start_values, end_values):
         heatmap = np.zeros([img_h, img_w], dtype=np.float32)
 
-        start, end = np.array(start), np.array(end)
-        min_x, max_x = min(start[0], end[0]), max(start[0], end[0])
-        min_y, max_y = min(start[1], end[1]), max(start[1], end[1])
+        for start, end, start_value, end_value in zip(starts, ends,
+                                                      start_values,
+                                                      end_values):
 
-        min_x = max(int(min_x - 3 * sigma), 0)
-        max_x = min(int(max_x + 3 * sigma) + 2, img_w)
-        min_y = max(int(min_y - 3 * sigma), 0)
-        max_y = min(int(max_y + 3 * sigma) + 2, img_h)
+            start, end = np.array(start), np.array(end)
+            min_x, max_x = min(start[0], end[0]), max(start[0], end[0])
+            min_y, max_y = min(start[1], end[1]), max(start[1], end[1])
 
-        x = np.arange(min_x, max_x, 1, np.float32)
-        y = np.arange(min_y, max_y, 1, np.float32)
+            min_x = max(int(min_x - 3 * sigma), 0)
+            max_x = min(int(max_x + 3 * sigma) + 2, img_w)
+            min_y = max(int(min_y - 3 * sigma), 0)
+            max_y = min(int(max_y + 3 * sigma) + 2, img_h)
 
-        if not (len(x) and len(y)):
-            return heatmap
+            x = np.arange(min_x, max_x, 1, np.float32)
+            y = np.arange(min_y, max_y, 1, np.float32)
 
-        y = y[:, None]
-        x_0 = np.zeros_like(x)
-        y_0 = np.zeros_like(y)
+            if not (len(x) and len(y)):
+                return heatmap
 
-        d2_start = ((x - start[0])**2 + (y - start[1])**2)
-        d2_end = ((x - end[0])**2 + (y - end[1])**2)
+            y = y[:, None]
+            x_0 = np.zeros_like(x)
+            y_0 = np.zeros_like(y)
 
-        d2_ab = ((start[0] - end[0])**2 + (start[1] - end[1])**2)
-        if d2_ab < 1:
-            return self.generate_a_heatmap(img_h, img_w, start, sigma,
-                                           start_value)
+            d2_start = ((x - start[0])**2 + (y - start[1])**2)
+            d2_end = ((x - end[0])**2 + (y - end[1])**2)
 
-        coeff = (d2_start - d2_end + d2_ab) / 2. / d2_ab
+            d2_ab = ((start[0] - end[0])**2 + (start[1] - end[1])**2)
+            if d2_ab < 1:
+                full_map = self.generate_a_heatmap(img_h, img_w, [start],
+                                                   sigma, [start_value])
+                heatmap = np.maximum(heatmap, full_map)
+                continue
 
-        a_dominate = coeff <= 0
-        b_dominate = coeff >= 1
-        seg_dominate = 1 - a_dominate - b_dominate
+            coeff = (d2_start - d2_end + d2_ab) / 2. / d2_ab
 
-        position = np.stack([x + y_0, y + x_0], axis=-1)
-        projection = start + np.stack([coeff, coeff], axis=-1) * (end - start)
-        d2_line = position - projection
-        d2_line = d2_line[:, :, 0]**2 + d2_line[:, :, 1]**2
-        d2_seg = (
-            a_dominate * d2_start + b_dominate * d2_end +
-            seg_dominate * d2_line)
+            a_dominate = coeff <= 0
+            b_dominate = coeff >= 1
+            seg_dominate = 1 - a_dominate - b_dominate
 
-        value_coeff = (
-            a_dominate * start_value + b_dominate * end_value + seg_dominate *
-            (start_value + coeff * (end_value - start_value)))
-        patch = np.exp(-d2_seg / 2. / sigma**2)
-        patch = patch * value_coeff
+            position = np.stack([x + y_0, y + x_0], axis=-1)
+            projection = start + np.stack([coeff, coeff], axis=-1) * (
+                end - start)
+            d2_line = position - projection
+            d2_line = d2_line[:, :, 0]**2 + d2_line[:, :, 1]**2
+            d2_seg = (
+                a_dominate * d2_start + b_dominate * d2_end +
+                seg_dominate * d2_line)
 
-        heatmap[min_y:max_y, min_x:max_x] = patch
+            value_coeff = (
+                a_dominate * start_value + b_dominate * end_value +
+                seg_dominate * (start_value + coeff *
+                                (end_value - start_value)))
+            patch = np.exp(-d2_seg / 2. / sigma**2)
+            patch = patch * value_coeff
+
+            heatmap[min_y:max_y, min_x:max_x] = np.maximum(
+                heatmap[min_y:max_y, min_x:max_x], patch)
+
         return heatmap
 
     # sigma should have already been adjusted
     def generate_heatmap(self, img_h, img_w, kps, sigma, max_values):
         heatmaps = []
         if self.with_kp:
-            for kp, value in zip(kps, max_values):
+            num_kp = kps[0].shape[0]
+            for i in range(num_kp):
                 heatmaps.append(
-                    self.generate_a_heatmap(img_h, img_w, kp, sigma, value))
+                    self.generate_a_heatmap(img_h, img_w,
+                                            [kp[i] for kp in kps], sigma,
+                                            [value[i]
+                                             for value in max_values]))
+
         if self.with_limb:
             for limb in self.skeletons:
                 start_idx, end_idx = limb
-                start, end = kps[start_idx], kps[end_idx]
-                start_value = max_values[start_idx]
-                end_value = max_values[end_idx]
-                heatmap = self.generate_a_limb_heatmap(img_h, img_w, start,
-                                                       end, sigma, start_value,
-                                                       end_value)
+                starts = [kp[start_idx] for kp in kps]
+                ends = [kp[end_idx] for kp in kps]
+                start_values = [value[start_idx] for value in max_values]
+                end_values = [value[end_idx] for value in max_values]
+                heatmap = self.generate_a_limb_heatmap(img_h, img_w, starts,
+                                                       ends, sigma,
+                                                       start_values,
+                                                       end_values)
                 heatmaps.append(heatmap)
 
         return np.stack(heatmaps, axis=-1)
@@ -1713,31 +1703,12 @@ class GeneratePoseTarget(object):
     # Just use the low performance implementation
     def __call__(self, results):
         all_kps = results['kp']
-        all_boxes = results['per_frame_box']
         all_kpscores = results['kpscore']
 
-        assert all_kps.shape[0] == all_boxes.shape[0]
-        assert all_kps.shape[0] % all_kpscores.shape[0] == 0
-
-        num_seg = all_kps.shape[0] // all_kpscores.shape[0]
-
-        num_frame = all_kpscores.shape[0]
-
-        all_kps_byseg = [
-            all_kps[i * num_frame:(i + 1) * num_frame] for i in range(num_seg)
-        ]
+        num_frame = all_kpscores[0].shape[0]
 
         if self.sigma is not None:
-            if self.human_rescale:
-                original_diag = np.linalg.norm(results['img_shape'])
-                # should convert all_boxes to np.float32 to avoid overflow
-                all_boxes = all_boxes.astype(np.float32)
-                # we only need one group to set sigma_ratio
-                box_diag = np.linalg.norm(all_boxes[:num_frame, 2:], axis=1)
-                sigma_ratio = box_diag / original_diag
-            else:
-                sigma_ratio = np.ones(num_frame, dtype=np.float32)
-
+            sigma_ratio = np.ones(num_frame, dtype=np.float32)
             sigmas = self.sigma * sigma_ratio
         else:
             sigmas = [None] * num_frame
@@ -1745,22 +1716,19 @@ class GeneratePoseTarget(object):
         img_h, img_w = results['img_shape']
 
         imgs = []
-        for seg_ind in range(num_seg):
-            all_kps = all_kps_byseg[seg_ind]
-            for i in range(num_frame):
-                kps = all_kps[i]
-                kpscores = all_kpscores[i]
-                sigma = sigmas[i]
+        for i in range(num_frame):
+            # We list shape of each item in the list
+            kps = [kps[i] for kps in all_kps]  # num_kp x 2
+            kpscores = [kpscores[i] for kpscores in all_kpscores]  # num_kp
+            sigma = sigmas[i]  # 1
 
-                num_kps = kpscores.shape[0]
-                max_values = np.ones(num_kps)
-                if self.use_score:
-                    max_values = kpscores
-
-                # just keep appending
-                imgs.append(
-                    self.generate_heatmap(img_h, img_w, kps, sigma,
-                                          max_values))
+            num_kps = kpscores[0].shape[0]
+            max_values = [np.ones(num_kps)] * results['num_person']
+            if self.use_score:
+                max_values = kpscores
+            # just keep appending
+            imgs.append(
+                self.generate_heatmap(img_h, img_w, kps, sigma, max_values))
 
         results['imgs'] = np.stack(imgs)
 

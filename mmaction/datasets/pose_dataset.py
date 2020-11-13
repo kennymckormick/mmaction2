@@ -5,6 +5,20 @@ from ..core import mean_class_accuracy, top_k_accuracy
 from .base import BaseDataset
 from .registry import DATASETS
 
+# In our design, the field of an annotations includes:
+#     frame_dir: name of the video (can be extend for RGB + Pose later)
+#     num_frame: number of frames
+#     num_person: number of persons
+#     label: action label
+#     per_frame_box: list[num_person] of ndarray[num_frame * 4]. (for each
+#         person, [-1, -1, -1, -1] if not exists)
+#     kp: list[num_person] of ndarray[num_frame * num_kp * 2] (for each person,
+#         all 0 if not exists)
+#     kpscore: list[num_person] of ndarray[num_frame * num_kp] (for each
+#         person, score should between [0, 1], -1 if sure that the kp not
+#         exists)
+#     img_shape, original_shape: The same. The img shape.
+
 
 @DATASETS.register_module()
 class PoseDataset(BaseDataset):
