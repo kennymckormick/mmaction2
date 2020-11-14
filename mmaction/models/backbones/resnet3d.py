@@ -386,6 +386,7 @@ class ResNet3d(nn.Module):
     def __init__(self,
                  depth,
                  pretrained,
+                 stage_blocks=None,
                  pretrained2d=True,
                  in_channels=3,
                  num_stages=4,
@@ -423,6 +424,7 @@ class ResNet3d(nn.Module):
         self.base_channels = base_channels
         self.num_stages = num_stages
         assert num_stages >= 1 and num_stages <= 4
+        self.stage_blocks = stage_blocks
         self.out_indices = out_indices
         assert max(out_indices) < num_stages
         self.spatial_strides = spatial_strides
@@ -430,6 +432,10 @@ class ResNet3d(nn.Module):
         self.dilations = dilations
         assert len(spatial_strides) == len(temporal_strides) == len(
             dilations) == num_stages
+
+        if self.stage_blocks is not None:
+            assert len(self.stage_blocks) == num_stages
+
         self.conv1_kernel = conv1_kernel
         self.conv1_stride_s = conv1_stride_s
         self.conv1_stride_t = conv1_stride_t
@@ -449,7 +455,9 @@ class ResNet3d(nn.Module):
         self.zero_init_residual = zero_init_residual
 
         self.block, stage_blocks = self.arch_settings[depth]
-        self.stage_blocks = stage_blocks[:num_stages]
+
+        if self.stage_blocks is None:
+            self.stage_blocks = stage_blocks[:num_stages]
         self.inplanes = self.base_channels
 
         self.non_local_cfg = non_local_cfg
