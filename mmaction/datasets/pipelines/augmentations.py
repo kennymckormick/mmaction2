@@ -924,8 +924,8 @@ class PoseFlip(object):
     def __init__(self,
                  flip_ratio=0.5,
                  direction='horizontal',
-                 left=list(range(1, 13, 2)),
-                 right=list(range(2, 13, 2))):
+                 left=[],
+                 right=[]):
         if direction not in self._directions:
             raise ValueError(f'Direction {direction} is not supported. '
                              f'Currently support ones are {self._directions}')
