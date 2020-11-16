@@ -1,3 +1,6 @@
+import copy
+import os.path as osp
+
 import mmcv
 from mmcv.utils import print_log
 
@@ -48,10 +51,29 @@ class PoseDataset(BaseDataset):
 
     def load_pkl_annotations(self):
         data = mmcv.load(self.ann_file)
-        # Ugly fix: num_frame > total_frames
+
         for i, item in enumerate(data):
-            item['total_frames'] = item['num_frame']
+            if 'filename' in item:
+                item['filename'] = osp.join(self.data_prefix, item['filename'])
+            # will do that in prepare_frames, cuz there may be only a
+            # 'filename' in annofile
+            if 'num_frame' in item:
+                item['total_frames'] = item['num_frame']
         return data
+
+    def prepare_train_frames(self, idx):
+        """Prepare the frames for training given the index."""
+        results = copy.deepcopy(self.video_infos[idx])
+        results['modality'] = self.modality
+        results['start_index'] = self.start_index
+        return self.pipeline(results)
+
+    def prepare_test_frames(self, idx):
+        """Prepare the frames for testing given the index."""
+        results = copy.deepcopy(self.video_infos[idx])
+        results['modality'] = self.modality
+        results['start_index'] = self.start_index
+        return self.pipeline(results)
 
     def evaluate(self,
                  results,

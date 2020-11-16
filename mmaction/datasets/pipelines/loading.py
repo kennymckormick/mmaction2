@@ -1,6 +1,7 @@
 import io
 import os
 import os.path as osp
+import pickle
 import shutil
 import warnings
 
@@ -910,6 +911,7 @@ class RawFrameDecode(object):
 
 
 # Support Pose w. MultiPerson
+# Decide to make `per_frame_box` optional
 @PIPELINES.register_module()
 class PoseDecode(object):
     """Load and decode pose with given indices.
@@ -930,14 +932,17 @@ class PoseDecode(object):
         offset = results.get('offset', 0)
         frame_inds = results['frame_inds'] + offset
 
-        assert results['num_person'] == len(results['per_frame_box']) == len(
-            results['kp']) == len(results['kpscore'])
+        assert results['num_person'] == len(results['kp']) == len(
+            results['kpscore'])
+        if 'per_frame_box' in results:
+            assert results['num_person'] == len(results['per_frame_box'])
+            # the three items are lists
+            # for storing, we use fp16, here we can convert them to float32
+            results['per_frame_box'] = [
+                x[frame_inds].astype(np.float32)
+                for x in results['per_frame_box']
+            ]
 
-        # the three items are lists
-        # for storing, we use fp16, here we can convert them to float32
-        results['per_frame_box'] = [
-            x[frame_inds].astype(np.float32) for x in results['per_frame_box']
-        ]
         results['kp'] = [
             x[frame_inds].astype(np.float32) for x in results['kp']
         ]
@@ -946,6 +951,80 @@ class PoseDecode(object):
         ]
 
         return results
+
+
+@PIPELINES.register_module()
+class LoadKineticsPose(object):
+    """Load and decode pose with given indices.
+
+    Required keys are "filename".
+    """
+
+    # squeeze (Remove those frames that w/o. keypoints)
+    # kp2keep (The list of keypoint ids to keep)
+    def __init__(self,
+                 io_backend='disk',
+                 squeeze=True,
+                 kp2keep=None,
+                 **kwargs):
+        self.io_backend = io_backend
+        self.squeeze = squeeze
+        self.kp2keep = kp2keep
+        self.kwargs = kwargs
+        self.file_client = None
+
+    def __call__(self, results):
+        """Perform the ``RawFrameDecode`` to pick frames given indices.
+
+        Args:
+            results (dict): The resulting dict to be modified and passed
+                to the next transform in pipeline.
+        """
+        assert 'filename' in results
+        filename = results.pop('filename')
+
+        if self.file_client is None:
+            self.file_client = FileClient(self.io_backend, **self.kwargs)
+
+        bytes = self.file_client.get(filename)
+        data = pickle.load(bytes)
+        data.update(results)
+
+        def mapinds(inds):
+            uni = np.unique(inds)
+            mapp = {x: i for i, x in enumerate(uni)}
+            inds = inds.tolist()
+            inds = [mapp[x] for x in inds]
+            return np.array(inds, dtype=np.int16)
+
+        num_person = data['num_person']
+        num_frame = data['num_frame']
+        frame_inds = list(data.pop('frame_inds'))
+        person_inds = list(data.pop('person_inds'))
+
+        if self.squeeze:
+            frame_inds = mapinds(frame_inds)
+            num_frame = np.max(frame_inds) + 1
+
+        # need write back
+        data['num_frame'] = num_frame
+        data['total_frames'] = num_frame
+
+        if self.kp2keep is not None:
+            kps = data['kp'][:, self.kp2keep]
+
+        num_kp = kps.shape[1]
+        new_kp = np.zeros([num_person, num_frame, num_kp, 2], dtype=np.float16)
+        new_kpscore = np.zeros([num_person, num_frame, num_kp],
+                               dtype=np.float16)
+
+        for frame_ind, person_ind, kp in zip(frame_inds, person_inds, kps):
+            new_kp[person_ind, frame_ind] = kp[:, :2]
+            new_kpscore[person_ind, frame_ind] = kp[:, 2]
+
+        data['kp'] = new_kp
+        data['kpscore'] = new_kpscore
+        return data
 
 
 @PIPELINES.register_module()

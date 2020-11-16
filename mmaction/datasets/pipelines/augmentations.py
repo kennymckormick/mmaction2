@@ -329,6 +329,9 @@ class PoseRandomResizedCrop(RandomResizedCrop):
         # OK, finally we look at kpscore to decide whether to visualize
         results['kp'] = [kp - new_origin for kp in results['kp']]
 
+        if 'per_frame_box' not in results:
+            return results
+
         new_per_frame_box = []
         for item in results['per_frame_box']:
             box_invalid_mask = np.isclose(item, np.ones_like(item) * -1)
@@ -571,6 +574,9 @@ class PoseMultiScaleCrop(object):
         # OK, finally we look at kpscore to decide whether to visualize
         results['kp'] = [kp - new_origin for kp in results['kp']]
 
+        if 'per_frame_box' not in results:
+            return results
+
         new_per_frame_box = []
         for item in results['per_frame_box']:
             box_invalid_mask = np.isclose(item, np.ones_like(item) * -1)
@@ -775,6 +781,9 @@ class PoseResize(object):
         # OK, finally we look at kpscore to decide whether to visualize
         results['kp'] = [x * self.scale_factor for x in results['kp']]
 
+        if 'per_frame_box' not in results:
+            return results
+
         new_per_frame_box = []
         for item in results['per_frame_box']:
             box_invalid_mask = np.isclose(item, np.ones_like(item) * -1)
@@ -955,6 +964,9 @@ class PoseFlip(object):
                     item[:, left_ind] = item[:, right_ind]
                     item[:, right_ind] = tmp
 
+            if 'per_frame_box' not in results:
+                return results
+
             new_per_frame_box = []
             for item in results['per_frame_box']:
                 box_invalid_mask = np.isclose(item, np.ones_like(item) * -1)
@@ -968,8 +980,9 @@ class PoseFlip(object):
                 new_per_frame_box.append(item * box_invalid_mask + new_item *
                                          (1 - box_invalid_mask))
             results['per_frame_box'] = new_per_frame_box
-
-        return results
+            return results
+        else:
+            return results
 
     def __repr__(self):
         repr_str = (
@@ -1338,6 +1351,9 @@ class PoseCenterCrop(CenterCrop):
         new_origin = np.array([left, top])
 
         results['kp'] = [kp - new_origin for kp in results['kp']]
+
+        if 'per_frame_box' not in results:
+            return results
 
         new_per_frame_box = []
         for item in results['per_frame_box']:
