@@ -1012,6 +1012,9 @@ class LoadKineticsPose(object):
 
         if self.kp2keep is not None:
             kps = data['kp'][:, self.kp2keep]
+        h, w = data['img_shape']
+        kps[:, :, 0] *= w
+        kps[:, :, 1] *= h
 
         num_kp = kps.shape[1]
         new_kp = np.zeros([num_person, num_frame, num_kp, 2], dtype=np.float16)
