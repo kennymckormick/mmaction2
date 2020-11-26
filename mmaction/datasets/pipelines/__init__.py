@@ -1,6 +1,6 @@
 from .augmentations import (CenterCrop, ColorJitter, Flip, Fuse,
                             GeneratePoseTarget, MultiGroupCrop, MultiScaleCrop,
-                            Normalize, PoseCenterCrop, PoseFlip,
+                            Normalize, PoseCenterCrop, PoseCompact, PoseFlip,
                             PoseMultiScaleCrop, PoseRandomResizedCrop,
                             PoseResize, RandomCrop, RandomResizedCrop, Resize,
                             RGBFlowFlip, TenCrop, ThreeCrop)
@@ -26,5 +26,5 @@ __all__ = [
     'PyAVInit', 'SampleProposalFrames', 'ColorJitter', 'RGBFlowFlip',
     'RawRGBFlowDecode', 'PoseRandomResizedCrop', 'PoseMultiScaleCrop',
     'PoseCenterCrop', 'PoseResize', 'PoseFlip', 'GeneratePoseTarget',
-    'PoseDecode', 'LoadKineticsPose'
+    'PoseDecode', 'LoadKineticsPose', 'PoseCompact'
 ]

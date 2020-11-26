@@ -90,6 +90,43 @@ class Fuse(object):
         return results
 
 
+# We assume that results['kp'] is not empty (all equals to 0)
+@PIPELINES.register_module()
+class PoseCompact:
+
+    def __init__(self, padding=1. / 8.):
+        self.padding = padding
+        assert self.padding >= 0
+
+    def __call__(self, results):
+        img_shape = results['img_shape']
+        h, w = img_shape
+        kps = results['kp']
+        min_x, min_y, max_x, max_y = np.Inf, np.Inf, -np.Inf, -np.Inf
+        for kp in kps:
+            kp_x = kp[:, :, 0]
+            kp_y = kp[:, :, 1]
+            min_x = min(min(kp_x[kp_x != 0]), min_x)
+            min_y = min(min(kp_y[kp_y != 0]), min_y)
+            max_x = max(max(kp_x[kp_x != 0]), max_x)
+            max_y = max(max(kp_y[kp_y != 0]), max_y)
+
+        min_x -= (max_x - min_x) * self.padding
+        max_x += (max_x - min_x) * self.padding
+        min_y -= (max_y - min_y) * self.padding
+        max_y += (max_y - min_y) * self.padding
+
+        min_x, min_y = int(max(0, min_x)), int(max(0, min_y))
+        max_x, max_y = int(min(w, max_x)), int(min(h, max_y))
+        for kp in kps:
+            kp_x = kp[:, :, 0]
+            kp_y = kp[:, :, 1]
+            kp_x[kp_x != 0] -= min_x
+            kp_y[kp_y != 0] -= min_y
+        new_shape = (max_y - min_y, max_x - min_x)
+        results['img_shape'] = new_shape
+
+
 @PIPELINES.register_module()
 class RandomCrop(object):
     """Vanilla square random crop that specifics the output size.
@@ -957,12 +994,18 @@ class PoseFlip(object):
 
         img_width = results['img_shape'][0]
         if flip:
-            for item in results['kp']:
+            for ind, item in enumerate(results['kp']):
                 item[:, :, 0] = img_width - item[:, :, 0]
+                if 'kpscore' in results:
+                    kpscore = results['kpscore'][ind]
                 for left_ind, right_ind in zip(self.left, self.right):
                     tmp = cp.deepcopy(item[:, left_ind])
                     item[:, left_ind] = item[:, right_ind]
                     item[:, right_ind] = tmp
+                    if 'kpscore' in results:
+                        tmp = cp.deepcopy(kpscore[:, left_ind])
+                        kpscore[:, left_ind] = kpscore[:, right_ind]
+                        kpscore[:, right_ind] = tmp
 
             if 'per_frame_box' not in results:
                 return results
@@ -981,8 +1024,7 @@ class PoseFlip(object):
                                          (1 - box_invalid_mask))
             results['per_frame_box'] = new_per_frame_box
             return results
-        else:
-            return results
+        return results
 
     def __repr__(self):
         repr_str = (
