@@ -13,8 +13,7 @@ from .registry import DATASETS
 #     num_frame: number of frames
 #     num_person: number of persons
 #     label: action label
-#     per_frame_box: list[num_person] of ndarray[num_frame * 4]. (for each
-#         person, [-1, -1, -1, -1] if not exists)
+#     per_frame_box: list[num_person] of ndarray[num_frame * 4]. (optional)
 #     kp: list[num_person] of ndarray[num_frame * num_kp * 2] (for each person,
 #         all 0 if not exists)
 #     kpscore: list[num_person] of ndarray[num_frame * num_kp] (for each

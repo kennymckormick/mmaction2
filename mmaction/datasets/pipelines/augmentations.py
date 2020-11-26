@@ -1718,9 +1718,15 @@ class GeneratePoseTarget(object):
     # Just use the low performance implementation
     def __call__(self, results):
         all_kps = results['kp']
-        all_kpscores = results['kpscore']
+        kp_shape = results['kp'][0].shape
+        num_person = results['num_person']
 
-        num_frame = all_kpscores[0].shape[0]
+        if 'kpscore' in results:
+            all_kpscores = results['kpscore']
+        else:
+            all_kpscores = [np.ones(kp_shape[:-1]) for i in range(num_person)]
+
+        num_frame = kp_shape[0]
 
         if self.sigma is not None:
             sigma_ratio = np.ones(num_frame, dtype=np.float32)

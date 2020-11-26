@@ -916,7 +916,8 @@ class RawFrameDecode(object):
 class PoseDecode(object):
     """Load and decode pose with given indices.
 
-    Required keys are "frame_inds", "per_frame_box", "kp" and "kpscore".
+    Required keys are "frame_inds", "kp". "kpscore" and "per_frame_box" are
+    optional.
     """
 
     def __call__(self, results):
@@ -932,8 +933,8 @@ class PoseDecode(object):
         offset = results.get('offset', 0)
         frame_inds = results['frame_inds'] + offset
 
-        assert results['num_person'] == len(results['kp']) == len(
-            results['kpscore'])
+        assert results['num_person'] == len(results['kp'])
+
         if 'per_frame_box' in results:
             assert results['num_person'] == len(results['per_frame_box'])
             # the three items are lists
@@ -942,12 +943,14 @@ class PoseDecode(object):
                 x[frame_inds].astype(np.float32)
                 for x in results['per_frame_box']
             ]
+        if 'kpscore' in results:
+            assert results['num_person'] == len(results['kpscore'])
+            results['kpscore'] = [
+                x[frame_inds].astype(np.float32) for x in results['kpscore']
+            ]
 
         results['kp'] = [
             x[frame_inds].astype(np.float32) for x in results['kp']
-        ]
-        results['kpscore'] = [
-            x[frame_inds].astype(np.float32) for x in results['kpscore']
         ]
 
         return results
