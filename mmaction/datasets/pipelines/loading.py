@@ -987,13 +987,12 @@ class LoadKineticsPose(object):
             self.file_client = FileClient(self.io_backend, **self.kwargs)
 
         bytes = self.file_client.get(filename)
-        data = pickle.load(bytes)
+        data = pickle.loads(bytes)
         data.update(results)
 
         def mapinds(inds):
             uni = np.unique(inds)
             mapp = {x: i for i, x in enumerate(uni)}
-            inds = inds.tolist()
             inds = [mapp[x] for x in inds]
             return np.array(inds, dtype=np.int16)
 
@@ -1010,8 +1009,9 @@ class LoadKineticsPose(object):
         data['num_frame'] = num_frame
         data['total_frames'] = num_frame
 
+        kps = data['kp']
         if self.kp2keep is not None:
-            kps = data['kp'][:, self.kp2keep]
+            kps = kps[:, self.kp2keep]
         h, w = data['img_shape']
         kps[:, :, 0] *= w
         kps[:, :, 1] *= h
