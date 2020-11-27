@@ -106,10 +106,14 @@ class PoseCompact:
         for kp in kps:
             kp_x = kp[:, :, 0]
             kp_y = kp[:, :, 1]
-            min_x = min(min(kp_x[kp_x != 0]), min_x)
-            min_y = min(min(kp_y[kp_y != 0]), min_y)
-            max_x = max(max(kp_x[kp_x != 0]), max_x)
-            max_y = max(max(kp_y[kp_y != 0]), max_y)
+            # There is at least one legal kp
+            if np.sum(kp_x != 0) or np.sum(kp_y != 0):
+                min_x = min(min(kp_x[kp_x != 0]), min_x)
+                min_y = min(min(kp_y[kp_y != 0]), min_y)
+                max_x = max(max(kp_x[kp_x != 0]), max_x)
+                max_y = max(max(kp_y[kp_y != 0]), max_y)
+            else:
+                continue
 
         min_x -= (max_x - min_x) * self.padding
         max_x += (max_x - min_x) * self.padding
