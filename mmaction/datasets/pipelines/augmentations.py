@@ -129,6 +129,7 @@ class PoseCompact:
             kp_y[kp_y != 0] -= min_y
         new_shape = (max_y - min_y, max_x - min_x)
         results['img_shape'] = new_shape
+        return results
 
 
 @PIPELINES.register_module()
