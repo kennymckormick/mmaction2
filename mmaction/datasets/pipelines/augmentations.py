@@ -115,6 +115,9 @@ class PoseCompact:
             else:
                 continue
 
+        # Only one joint available
+        if min_x == max_x or min_y == max_y:
+            return results
         min_x -= (max_x - min_x) * self.padding
         max_x += (max_x - min_x) * self.padding
         min_y -= (max_y - min_y) * self.padding
