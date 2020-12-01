@@ -94,8 +94,10 @@ class Fuse(object):
 @PIPELINES.register_module()
 class PoseCompact:
 
-    def __init__(self, padding=1. / 8.):
+    def __init__(self, padding=1. / 8., threshold=10):
         self.padding = padding
+        self.threshold = threshold
+        # The minimum threshold of PoseCompact (#pixel after PoseCompact)
         assert self.padding >= 0
 
     def __call__(self, results):
@@ -115,9 +117,10 @@ class PoseCompact:
             else:
                 continue
 
-        # Only one joint available
-        if min_x == max_x or min_y == max_y:
+        # The Compact area is too small
+        if max_x - min_x < self.threshold or max_y - min_y < self.threshold:
             return results
+
         min_x -= (max_x - min_x) * self.padding
         max_x += (max_x - min_x) * self.padding
         min_y -= (max_y - min_y) * self.padding
