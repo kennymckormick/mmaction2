@@ -1729,10 +1729,8 @@ class GeneratePoseTarget(object):
                 a_dominate * d2_start + b_dominate * d2_end +
                 seg_dominate * d2_line)
 
-            value_coeff = (
-                a_dominate * start_value + b_dominate * end_value +
-                seg_dominate * (start_value + coeff *
-                                (end_value - start_value)))
+            # The min value of 2kps should be used
+            value_coeff = min(start_value, end_value)
             patch = np.exp(-d2_seg / 2. / sigma**2)
             patch = patch * value_coeff
 
