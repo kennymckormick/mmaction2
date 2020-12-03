@@ -1085,7 +1085,7 @@ class PoseFlip(object):
         results['flip'] = flip
         results['flip_direction'] = self.direction
 
-        img_width = results['img_shape'][0]
+        img_width = results['img_shape'][1]
         if flip:
             for ind, item in enumerate(results['kp']):
                 item[:, :, 0] = img_width - item[:, :, 0]
