@@ -182,11 +182,35 @@ class RandomCrop(object):
             [x_offset, y_offset, x_offset + new_w, y_offset + new_h])
         results['img_shape'] = (new_h, new_w)
 
+        modality = results['modality']
+        if modality == 'Pose':
+            assert not self.lazy
+
         if not self.lazy:
-            results['imgs'] = [
-                img[y_offset:y_offset + new_h, x_offset:x_offset + new_w]
-                for img in results['imgs']
-            ]
+            if modality == 'Pose':
+                new_origin = np.array([x_offset, y_offset])
+                results['kp'] = [kp - new_origin for kp in results['kp']]
+                if 'per_frame_box' not in results:
+                    return results
+
+                new_per_frame_box = []
+                for item in results['per_frame_box']:
+                    box_invalid_mask = np.isclose(item,
+                                                  np.ones_like(item) * -1)
+                    # all four value should be close to -1
+                    box_invalid_mask = np.all(box_invalid_mask, axis=1)
+                    box_invalid_mask = np.stack(
+                        [box_invalid_mask] * 4, axis=-1)
+                    new_item = cp.deepcopy(item)
+                    new_item[:, :2] -= new_origin
+                    new_per_frame_box.append(item * box_invalid_mask +
+                                             new_item * (1 - box_invalid_mask))
+                results['per_frame_box'] = new_per_frame_box
+            else:
+                results['imgs'] = [
+                    img[y_offset:y_offset + new_h, x_offset:x_offset + new_w]
+                    for img in results['imgs']
+                ]
         else:
             lazyop = results['lazy']
             if lazyop['flip']:
@@ -1412,10 +1436,34 @@ class CenterCrop(object):
         results['crop_bbox'] = np.array([left, top, right, bottom])
         results['img_shape'] = (new_h, new_w)
 
+        modality = results['modality']
+        if modality == 'Pose':
+            assert not self.lazy
+
         if not self.lazy:
-            results['imgs'] = [
-                img[top:bottom, left:right] for img in results['imgs']
-            ]
+            if modality == 'Pose':
+                new_origin = np.array([left, top])
+                results['kp'] = [kp - new_origin for kp in results['kp']]
+                if 'per_frame_box' not in results:
+                    return results
+
+                new_per_frame_box = []
+                for item in results['per_frame_box']:
+                    box_invalid_mask = np.isclose(item,
+                                                  np.ones_like(item) * -1)
+                    # all four value should be close to -1
+                    box_invalid_mask = np.all(box_invalid_mask, axis=1)
+                    box_invalid_mask = np.stack(
+                        [box_invalid_mask] * 4, axis=-1)
+                    new_item = cp.deepcopy(item)
+                    new_item[:, :2] -= new_origin
+                    new_per_frame_box.append(item * box_invalid_mask +
+                                             new_item * (1 - box_invalid_mask))
+                results['per_frame_box'] = new_per_frame_box
+            else:
+                results['imgs'] = [
+                    img[top:bottom, left:right] for img in results['imgs']
+                ]
         else:
             lazyop = results['lazy']
             if lazyop['flip']:
@@ -1438,50 +1486,6 @@ class CenterCrop(object):
     def __repr__(self):
         repr_str = (f'{self.__class__.__name__}(crop_size={self.crop_size}, '
                     f'lazy={self.lazy})')
-        return repr_str
-
-
-@PIPELINES.register_module()
-class PoseCenterCrop(CenterCrop):
-
-    def __init__(self, crop_size):
-        super().__init__(crop_size=crop_size, lazy=False)
-
-    def __call__(self, results):
-        img_h, img_w = results['img_shape']
-        crop_w, crop_h = self.crop_size
-
-        left = (img_w - crop_w) // 2
-        top = (img_h - crop_h) // 2
-        right = left + crop_w
-        bottom = top + crop_h
-        new_h, new_w = bottom - top, right - left
-
-        results['crop_bbox'] = np.array([left, top, right, bottom])
-        results['img_shape'] = (new_h, new_w)
-        new_origin = np.array([left, top])
-
-        results['kp'] = [kp - new_origin for kp in results['kp']]
-
-        if 'per_frame_box' not in results:
-            return results
-
-        new_per_frame_box = []
-        for item in results['per_frame_box']:
-            box_invalid_mask = np.isclose(item, np.ones_like(item) * -1)
-            # all four value should be close to -1
-            box_invalid_mask = np.all(box_invalid_mask, axis=1)
-            box_invalid_mask = np.stack([box_invalid_mask] * 4, axis=-1)
-            new_item = cp.deepcopy(item)
-            new_item[:, :2] -= new_origin
-            new_per_frame_box.append(item * box_invalid_mask + new_item *
-                                     (1 - box_invalid_mask))
-        results['per_frame_box'] = new_per_frame_box
-
-        return results
-
-    def __repr__(self):
-        repr_str = (f'{self.__class__.__name__}(crop_size={self.crop_size})')
         return repr_str
 
 
