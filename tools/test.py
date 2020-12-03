@@ -111,11 +111,12 @@ def main():
         init_dist(args.launcher, **cfg.dist_params)
 
     # create work_dir
-    mmcv.mkdir_or_exist(osp.abspath(cfg.work_dir))
+    if hasattr(cfg, 'work_dir'):
+        mmcv.mkdir_or_exist(osp.abspath(cfg.work_dir))
     # build the dataloader
     dataset = build_dataset(cfg.data.test, dict(test_mode=True))
     dataloader_setting = dict(
-        videos_per_gpu=1, workers_per_gpu=1, dist=distributed, shuffle=False)
+        videos_per_gpu=1, workers_per_gpu=4, dist=distributed, shuffle=False)
     dataloader_setting = dict(dataloader_setting,
                               **cfg.data.get('test_dataloader', {}))
     data_loader = build_dataloader(dataset, **dataloader_setting)
