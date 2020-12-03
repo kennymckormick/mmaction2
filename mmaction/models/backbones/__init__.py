@@ -1,3 +1,4 @@
+from .potion_net import PotionNet
 from .resnet import ResNet
 from .resnet2plus1d import ResNet2Plus1d
 from .resnet3d import ResNet3d
@@ -8,5 +9,5 @@ from .resnet_tsm import ResNetTSM
 
 __all__ = [
     'ResNet', 'ResNet3d', 'ResNetTSM', 'ResNet2Plus1d', 'ResNet3dSlowFast',
-    'ResNet3dSlowOnly', 'ResNet3dCSN'
+    'ResNet3dSlowOnly', 'ResNet3dCSN', 'PotionNet'
 ]

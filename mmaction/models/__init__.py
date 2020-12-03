@@ -1,9 +1,11 @@
-from .backbones import (ResNet, ResNet2Plus1d, ResNet3d, ResNet3dCSN,
-                        ResNet3dSlowFast, ResNet3dSlowOnly, ResNetTSM)
+from .backbones import (PotionNet, ResNet, ResNet2Plus1d, ResNet3d,
+                        ResNet3dCSN, ResNet3dSlowFast, ResNet3dSlowOnly,
+                        ResNetTSM)
 from .builder import (build_backbone, build_head, build_localizer, build_loss,
                       build_model, build_neck, build_recognizer)
 from .common import Conv2plus1d
-from .heads import BaseHead, I3DHead, SlowFastHead, TPNHead, TSMHead, TSNHead
+from .heads import (BaseHead, I3DHead, SimpleHead, SlowFastHead, TPNHead,
+                    TSMHead, TSNHead)
 from .localizers import BMN, PEM, TEM
 from .losses import (BCELossWithLogits, BinaryLogisticRegressionLoss, BMNLoss,
                      CrossEntropyLoss, NLLLoss, OHEMHingeLoss, SSNLoss)
@@ -20,5 +22,5 @@ __all__ = [
     'BCELossWithLogits', 'LOCALIZERS', 'build_localizer', 'PEM', 'TEM',
     'BinaryLogisticRegressionLoss', 'BMN', 'BMNLoss', 'build_model',
     'OHEMHingeLoss', 'SSNLoss', 'ResNet3dCSN', 'TPN', 'TPNHead', 'build_loss',
-    'build_neck'
+    'build_neck', 'PotionNet', 'SimpleHead'
 ]
