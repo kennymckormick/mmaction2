@@ -1692,6 +1692,9 @@ class MultiGroupCrop(object):
         return repr_str
 
 
+# By default, the returned tensor is (T x num_clips) x H x W x C
+# If the double option is set as True, the returned tensor will be
+# (2 x T x num_clips) x H x W x C
 @PIPELINES.register_module()
 class GeneratePoseTarget(object):
 
@@ -1700,16 +1703,22 @@ class GeneratePoseTarget(object):
                  use_score=False,
                  with_kp=True,
                  with_limb=False,
-                 skeletons=[]):
+                 left=[],
+                 right=[],
+                 skeletons=[],
+                 double=False):
 
         self.sigma = sigma
         self.use_score = use_score
         self.with_kp = with_kp
         self.with_limb = with_limb
+        self.double = double
 
         assert self.with_kp or self.with_limb, (
             'At least one of "with_limb" '
             'and "with_kp" should be set as True.')
+        self.left = left
+        self.right = right
         self.skeletons = skeletons
 
     def generate_a_heatmap(self, img_h, img_w, centers, sigma, max_values):
@@ -1828,8 +1837,7 @@ class GeneratePoseTarget(object):
 
         return np.stack(heatmaps, axis=-1)
 
-    # Just use the low performance implementation
-    def __call__(self, results):
+    def gen_an_aug(self, results):
         all_kps = results['kp']
         kp_shape = results['kp'][0].shape
         num_person = results['num_person']
@@ -1864,6 +1872,16 @@ class GeneratePoseTarget(object):
             imgs.append(
                 self.generate_heatmap(img_h, img_w, kps, sigma, max_values))
 
-        results['imgs'] = np.stack(imgs)
+        return imgs
 
+    def __call__(self, results):
+        if not self.double:
+            results['imgs'] = self.gen_an_aug(results)
+        else:
+            results_ = cp.deepcopy(results)
+            flip = PoseFlip(flip_ratio=1, left=self.left, right=self.right)
+            results_ = flip(results)
+            results['imgs'] = np.concatenate(
+                [self.gen_an_aug(results),
+                 self.gen_an_aug(results_)])
         return results
