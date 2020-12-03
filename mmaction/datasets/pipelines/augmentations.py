@@ -1885,3 +1885,63 @@ class GeneratePoseTarget(object):
                 [self.gen_an_aug(results),
                  self.gen_an_aug(results_)])
         return results
+
+
+# The Input will be a feature map ((N x T) x H x W x K), The output will be
+# a 2D map: (N x H x W x [K * (2C + 1)])
+# N is #clips x #crops, K is num_kpt
+@PIPELINES.register_module()
+class Heatmap2Potion:
+
+    def __init__(self, C, option='full'):
+        self.C = C
+        self.option = option
+        assert isinstance(C, int)
+        assert C >= 2
+        assert self.option in ['U', 'N', 'I', 'full']
+
+    def __call__(self, results):
+        assert results['modality'] == 'Pose'
+        heatmaps = results['imgs']
+        clip_len = results['clip_len']
+        C = self.C
+        heatmaps = heatmaps.reshape((-1, clip_len) + heatmaps.shape[1:])
+
+        # t in {0, 1, 2, ..., clip_len - 1}
+        def idx2color(t):
+            st, ed = np.zeros(C), np.zeros(C)
+            val = t / (clip_len - 1) * C
+            bin_idx = int(val)
+            val = val - bin_idx
+            st[bin_idx] = 1.
+            ed[bin_idx + 1] = 1.
+            return (1 - val) * st + val * ed
+
+        heatmaps_wcolor = []
+        for i in range(clip_len):
+            color = idx2color(i)
+            heatmap = heatmaps[:, i]
+            heatmap = heatmap[..., None]
+            heatmap = np.matmul(heatmap, color)
+            heatmaps_wcolor.append(heatmap)
+        # The shape of each element is N x H x W x K x C
+
+        heatmap_S = np.sum(heatmaps_wcolor)
+        # The shape of U_norm is N x H x 1 x 1 x C
+        U_norm = np.max(
+            np.max(heatmap_S, axis=2, keepdims=True), axis=3, keepdims=True)
+        heatmap_U = heatmap_S / U_norm
+        heatmap_I = np.sum(heatmap_U, axis=-1, keepdims=True)
+        heatmap_N = heatmap_U / (heatmap_I + 1)
+        if self.option == 'U':
+            heatmap = heatmap_U
+        elif self.option == 'I':
+            heatmap = heatmap_I
+        elif self.option == 'N':
+            heatmap = heatmap_N
+        elif self.option == 'full':
+            heatmap = np.concatenate([heatmap_U, heatmap_I, heatmap_N])
+
+        # Reshape the heatmap to 4D
+        heatmap = heatmap.reshape(heatmap.shape[:3] + (-1, ))
+        results['imgs'] = heatmap
