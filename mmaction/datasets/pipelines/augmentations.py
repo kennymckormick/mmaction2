@@ -1876,7 +1876,7 @@ class GeneratePoseTarget(object):
 
     def __call__(self, results):
         if not self.double:
-            results['imgs'] = self.gen_an_aug(results)
+            results['imgs'] = np.stack(self.gen_an_aug(results))
         else:
             results_ = cp.deepcopy(results)
             flip = PoseFlip(flip_ratio=1, left=self.left, right=self.right)
