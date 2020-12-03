@@ -1880,7 +1880,7 @@ class GeneratePoseTarget(object):
         else:
             results_ = cp.deepcopy(results)
             flip = PoseFlip(flip_ratio=1, left=self.left, right=self.right)
-            results_ = flip(results)
+            results_ = flip(results_)
             results['imgs'] = np.concatenate(
                 [self.gen_an_aug(results),
                  self.gen_an_aug(results_)])
