@@ -15,7 +15,7 @@ class PotionNet(nn.Module):
                  conv_cfg=dict(type='Conv'),
                  norm_cfg=dict(type='BN', requires_grad=True),
                  act_cfg=dict(type='ReLU', inplace=True)):
-        super(self).__init__()
+        super().__init__()
         self.in_channels = in_channels
         self.channels = channels
         self.num_layers = num_layers
