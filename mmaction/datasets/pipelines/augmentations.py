@@ -1910,7 +1910,10 @@ class Heatmap2Potion:
         # t in {0, 1, 2, ..., clip_len - 1}
         def idx2color(t):
             st, ed = np.zeros(C), np.zeros(C)
-            val = t / (clip_len - 1) * C
+            if t == clip_len - 1:
+                ed[C - 1] = 1.
+                return ed
+            val = t / (clip_len - 1) * (C - 1)
             bin_idx = int(val)
             val = val - bin_idx
             st[bin_idx] = 1.
@@ -1922,14 +1925,14 @@ class Heatmap2Potion:
             color = idx2color(i)
             heatmap = heatmaps[:, i]
             heatmap = heatmap[..., None]
-            heatmap = np.matmul(heatmap, color)
+            heatmap = np.matmul(heatmap, color[None, ])
             heatmaps_wcolor.append(heatmap)
-        # The shape of each element is N x H x W x K x C
 
-        heatmap_S = np.sum(heatmaps_wcolor)
-        # The shape of U_norm is N x H x 1 x 1 x C
+        # The shape of each element is N x H x W x K x C
+        heatmap_S = np.sum(heatmaps_wcolor, axis=0)
+        # The shape of U_norm is N x 1 x 1 x K x C
         U_norm = np.max(
-            np.max(heatmap_S, axis=2, keepdims=True), axis=3, keepdims=True)
+            np.max(heatmap_S, axis=1, keepdims=True), axis=2, keepdims=True)
         heatmap_U = heatmap_S / U_norm
         heatmap_I = np.sum(heatmap_U, axis=-1, keepdims=True)
         heatmap_N = heatmap_U / (heatmap_I + 1)
