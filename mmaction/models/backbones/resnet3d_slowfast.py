@@ -84,6 +84,8 @@ class ResNet3dPathway(ResNet3d):
                        blocks,
                        spatial_stride=1,
                        temporal_stride=1,
+                       lw_dropout=0,
+                       sw_dropout=0,
                        dilation=1,
                        style='pytorch',
                        inflate=1,
@@ -173,6 +175,8 @@ class ResNet3dPathway(ResNet3d):
                 norm_cfg=norm_cfg,
                 act_cfg=act_cfg,
                 with_cp=with_cp))
+        if lw_dropout > 0:
+            layers.append(nn.Dropout(lw_dropout))
         inplanes = planes * block.expansion
 
         for i in range(1, blocks):
@@ -192,6 +196,10 @@ class ResNet3dPathway(ResNet3d):
                     norm_cfg=norm_cfg,
                     act_cfg=act_cfg,
                     with_cp=with_cp))
+            if lw_dropout > 0:
+                layers.append(nn.Dropout(lw_dropout))
+        if sw_dropout > 0:
+            layers.append(nn.Dropout(sw_dropout))
 
         return nn.Sequential(*layers)
 
