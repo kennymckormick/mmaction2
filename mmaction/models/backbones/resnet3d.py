@@ -400,6 +400,8 @@ class ResNet3d(nn.Module):
                  conv1_stride_t=1,
                  pool1_stride_s=2,
                  pool1_stride_t=1,
+                 lw_dropout=0,
+                 sw_dropout=0,
                  with_pool2=True,
                  style='pytorch',
                  frozen_stages=-1,
@@ -441,6 +443,10 @@ class ResNet3d(nn.Module):
         self.conv1_stride_t = conv1_stride_t
         self.pool1_stride_s = pool1_stride_s
         self.pool1_stride_t = pool1_stride_t
+
+        self.lw_dropout = lw_dropout
+        self.sw_dropout = sw_dropout
+
         self.with_pool2 = with_pool2
         self.style = style
         self.frozen_stages = frozen_stages
@@ -477,6 +483,8 @@ class ResNet3d(nn.Module):
                 num_blocks,
                 spatial_stride=spatial_stride,
                 temporal_stride=temporal_stride,
+                lw_dropout=lw_dropout,
+                sw_dropout=sw_dropout,
                 dilation=dilation,
                 style=self.style,
                 norm_cfg=self.norm_cfg,
@@ -503,6 +511,8 @@ class ResNet3d(nn.Module):
                        blocks,
                        spatial_stride=1,
                        temporal_stride=1,
+                       lw_dropout=0,
+                       sw_dropout=0,
                        dilation=1,
                        style='pytorch',
                        inflate=1,
@@ -588,6 +598,8 @@ class ResNet3d(nn.Module):
                 act_cfg=act_cfg,
                 with_cp=with_cp,
                 **kwargs))
+        if lw_dropout > 0:
+            layers.append(nn.Dropout(lw_dropout))
         inplanes = planes * block.expansion
         for i in range(1, blocks):
             layers.append(
@@ -607,6 +619,10 @@ class ResNet3d(nn.Module):
                     act_cfg=act_cfg,
                     with_cp=with_cp,
                     **kwargs))
+            if lw_dropout > 0:
+                layers.append(nn.Dropout(lw_dropout))
+        if sw_dropout > 0:
+            layers.append(nn.Dropout(sw_dropout))
 
         return nn.Sequential(*layers)
 
