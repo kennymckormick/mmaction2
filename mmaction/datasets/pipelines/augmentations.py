@@ -1944,7 +1944,8 @@ class Heatmap2Potion:
         elif self.option == 'N':
             heatmap = heatmap_N
         elif self.option == 'full':
-            heatmap = np.concatenate([heatmap_U, heatmap_I, heatmap_N])
+            heatmap = np.concatenate([heatmap_U, heatmap_I, heatmap_N],
+                                     axis=-1)
 
         # Reshape the heatmap to 4D
         heatmap = heatmap.reshape(heatmap.shape[:3] + (-1, ))
