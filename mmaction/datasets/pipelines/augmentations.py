@@ -1909,7 +1909,8 @@ class Heatmap2Potion:
 
         # t in {0, 1, 2, ..., clip_len - 1}
         def idx2color(t):
-            st, ed = np.zeros(C), np.zeros(C)
+            st = np.zeros(C, dtype=np.float32)
+            ed = np.zeros(C, dtype=np.float32)
             if t == clip_len - 1:
                 ed[C - 1] = 1.
                 return ed
@@ -1948,3 +1949,4 @@ class Heatmap2Potion:
         # Reshape the heatmap to 4D
         heatmap = heatmap.reshape(heatmap.shape[:3] + (-1, ))
         results['imgs'] = heatmap
+        return results

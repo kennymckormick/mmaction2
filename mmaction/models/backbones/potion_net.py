@@ -43,8 +43,8 @@ class PotionNet(nn.Module):
                 layer.append(conv)
                 if self.lw_dropout > 0:
                     layer.append(nn.Dropout(self.lw_dropout))
+                inplanes = ch
 
-            inplanes = ch
             layer = nn.Sequential(*layer)
             setattr(self, layer_name, layer)
 
