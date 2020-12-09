@@ -9,7 +9,7 @@ from torch.nn.modules.utils import _pair
 from ..registry import PIPELINES
 
 # Pose related modules include PoseRandomResizedCrop, PoseMultiScaleCrop,
-# PoseResize, PoseFlip, PoseCenterCrop
+# PoseResize, PoseFlip
 
 
 def _init_lazy_if_proper(results, lazy):
@@ -44,6 +44,14 @@ def _init_lazy_if_proper(results, lazy):
             results['lazy'] = lazyop
     else:
         assert 'lazy' not in results, 'Use Fuse after lazy operations'
+
+
+def combine_quadruple(a, b):
+    return (a[0] + a[2] * b[0], a[1] + a[3] * b[1], a[2] * b[2], a[3] * b[3])
+
+
+def flip_quadruple(a):
+    return (1 - a[0] - a[2], a[1], a[2], a[3])
 
 
 @PIPELINES.register_module()
@@ -135,6 +143,12 @@ class PoseCompact:
             kp_y[kp_y != 0] -= min_y
         new_shape = (max_y - min_y, max_x - min_x)
         results['img_shape'] = new_shape
+        # the order is x, y, w, h (in [0, 1]), a tuple
+        crop_quadruple = results.get('crop_quadruple', (0., 0., 1., 1.))
+        new_crop_quadruple = (min_x / w, min_y / h, (max_x - min_x) / w,
+                              (max_y - min_y) / h)
+        crop_quadruple = combine_quadruple(crop_quadruple, new_crop_quadruple)
+        results['crop_quadruple'] = crop_quadruple
         return results
 
 
@@ -186,6 +200,12 @@ class RandomCrop(object):
         if modality == 'Pose':
             assert not self.lazy
 
+        crop_quadruple = results.get('crop_quadruple', (0., 0., 1., 1.))
+        new_crop_quadruple = (x_offset / img_w, y_offset / img_h,
+                              new_w / img_w, new_h / img_h)
+        crop_quadruple = combine_quadruple(crop_quadruple, new_crop_quadruple)
+        results['crop_quadruple'] = crop_quadruple
+
         if not self.lazy:
             if modality == 'Pose':
                 new_origin = np.array([x_offset, y_offset])
@@ -234,6 +254,11 @@ class RandomCrop(object):
         repr_str = (f'{self.__class__.__name__}(size={self.size}, '
                     f'lazy={self.lazy})')
         return repr_str
+
+
+@PIPELINES.register_module()
+class PoseRandomCrop(RandomCrop):
+    pass
 
 
 @PIPELINES.register_module()
@@ -332,13 +357,42 @@ class RandomResizedCrop(object):
             (img_h, img_w), self.area_range, self.aspect_ratio_range)
         new_h, new_w = bottom - top, right - left
 
+        crop_quadruple = results.get('crop_quadruple', (0., 0., 1., 1.))
+        new_crop_quadruple = (left / img_w, top / img_h, new_w / img_w,
+                              new_h / img_h)
+        crop_quadruple = combine_quadruple(crop_quadruple, new_crop_quadruple)
+        results['crop_quadruple'] = crop_quadruple
+
         results['crop_bbox'] = np.array([left, top, right, bottom])
         results['img_shape'] = (new_h, new_w)
+        modality = results['modality']
+        if modality == 'Pose':
+            assert not self.lazy
 
         if not self.lazy:
-            results['imgs'] = [
-                img[top:bottom, left:right] for img in results['imgs']
-            ]
+            if modality == 'Pose':
+                new_origin = np.array([left, top])
+                results['kp'] = [kp - new_origin for kp in results['kp']]
+                if 'per_frame_box' not in results:
+                    return results
+
+                new_per_frame_box = []
+                for item in results['per_frame_box']:
+                    box_invalid_mask = np.isclose(item,
+                                                  np.ones_like(item) * -1)
+                    # all four value should be close to -1
+                    box_invalid_mask = np.all(box_invalid_mask, axis=1)
+                    box_invalid_mask = np.stack(
+                        [box_invalid_mask] * 4, axis=-1)
+                    new_item = cp.deepcopy(item)
+                    new_item[:, :2] -= new_origin
+                    new_per_frame_box.append(item * box_invalid_mask +
+                                             new_item * (1 - box_invalid_mask))
+                results['per_frame_box'] = new_per_frame_box
+            else:
+                results['imgs'] = [
+                    img[top:bottom, left:right] for img in results['imgs']
+                ]
         else:
             lazyop = results['lazy']
             if lazyop['flip']:
@@ -368,60 +422,7 @@ class RandomResizedCrop(object):
 
 @PIPELINES.register_module()
 class PoseRandomResizedCrop(RandomResizedCrop):
-    """RandomResizedCrop for Pose Data."""
-
-    def __init__(self,
-                 area_range=(0.56, 1.0),
-                 aspect_ratio_range=(3 / 4, 4 / 3)):
-        super().__init__(
-            area_range=area_range,
-            aspect_ratio_range=aspect_ratio_range,
-            lazy=False)
-
-    def __call__(self, results):
-        """Performs the RandomResizeCrop augmentation.
-
-        Args:
-            results (dict): The resulting dict to be modified and passed
-                to the next transform in pipeline.
-        """
-
-        img_h, img_w = results['img_shape']
-
-        left, top, right, bottom = self.get_crop_bbox(
-            (img_h, img_w), self.area_range, self.aspect_ratio_range)
-        new_h, new_w = bottom - top, right - left
-
-        results['crop_bbox'] = np.array([left, top, right, bottom])
-        results['img_shape'] = (new_h, new_w)
-
-        # The new origin is (left, top)
-        new_origin = np.array([left, top])
-
-        # OK, finally we look at kpscore to decide whether to visualize
-        results['kp'] = [kp - new_origin for kp in results['kp']]
-
-        if 'per_frame_box' not in results:
-            return results
-
-        new_per_frame_box = []
-        for item in results['per_frame_box']:
-            box_invalid_mask = np.isclose(item, np.ones_like(item) * -1)
-            # all four value should be close to -1
-            box_invalid_mask = np.all(box_invalid_mask, axis=1)
-            box_invalid_mask = np.stack([box_invalid_mask] * 4, axis=-1)
-            new_item = cp.deepcopy(item)
-            new_item[:, :2] -= new_origin
-            new_per_frame_box.append(item * box_invalid_mask + new_item *
-                                     (1 - box_invalid_mask))
-        results['per_frame_box'] = new_per_frame_box
-        return results
-
-    def __repr__(self):
-        repr_str = (f'{self.__class__.__name__}('
-                    f'area_range={self.area_range}, '
-                    f'aspect_ratio_range={self.aspect_ratio_range})')
-        return repr_str
+    pass
 
 
 @PIPELINES.register_module()
@@ -534,16 +535,46 @@ class MultiScaleCrop(object):
 
         new_h, new_w = crop_h, crop_w
 
+        crop_quadruple = results.get('crop_quadruple', (0., 0., 1., 1.))
+        new_crop_quadruple = (x_offset / img_w, y_offset / img_h,
+                              new_w / img_w, new_h / img_h)
+        crop_quadruple = combine_quadruple(crop_quadruple, new_crop_quadruple)
+        results['crop_quadruple'] = crop_quadruple
+
         results['crop_bbox'] = np.array(
             [x_offset, y_offset, x_offset + new_w, y_offset + new_h])
         results['img_shape'] = (new_h, new_w)
         results['scales'] = self.scales
 
+        modality = results['modality']
+        if modality == 'Pose':
+            assert not self.lazy
+
         if not self.lazy:
-            results['imgs'] = [
-                img[y_offset:y_offset + new_h, x_offset:x_offset + new_w]
-                for img in results['imgs']
-            ]
+            if modality == 'Pose':
+                new_origin = np.array([x_offset, y_offset])
+                results['kp'] = [kp - new_origin for kp in results['kp']]
+                if 'per_frame_box' not in results:
+                    return results
+
+                new_per_frame_box = []
+                for item in results['per_frame_box']:
+                    box_invalid_mask = np.isclose(item,
+                                                  np.ones_like(item) * -1)
+                    # all four value should be close to -1
+                    box_invalid_mask = np.all(box_invalid_mask, axis=1)
+                    box_invalid_mask = np.stack(
+                        [box_invalid_mask] * 4, axis=-1)
+                    new_item = cp.deepcopy(item)
+                    new_item[:, :2] -= new_origin
+                    new_per_frame_box.append(item * box_invalid_mask +
+                                             new_item * (1 - box_invalid_mask))
+                results['per_frame_box'] = new_per_frame_box
+            else:
+                results['imgs'] = [
+                    img[y_offset:y_offset + new_h, x_offset:x_offset + new_w]
+                    for img in results['imgs']
+                ]
         else:
             lazyop = results['lazy']
             if lazyop['flip']:
@@ -574,101 +605,8 @@ class MultiScaleCrop(object):
 
 
 @PIPELINES.register_module()
-class PoseMultiScaleCrop(object):
-    """MultiScaleCrop for Pose Data."""
-
-    def __init__(self,
-                 input_size,
-                 scales=(1, ),
-                 max_wh_scale_gap=1,
-                 random_crop=False,
-                 num_fixed_crops=5):
-        super().__init__(
-            input_size=input_size,
-            scales=scales,
-            max_wh_scale_gap=max_wh_scale_gap,
-            random_crop=random_crop,
-            num_fixed_crops=num_fixed_crops)
-
-    def __call__(self, results):
-        img_h, img_w = results['img_shape']
-        base_size = min(img_h, img_w)
-        crop_sizes = [int(base_size * s) for s in self.scales]
-
-        candidate_sizes = []
-        for i, h in enumerate(crop_sizes):
-            for j, w in enumerate(crop_sizes):
-                if abs(i - j) <= self.max_wh_scale_gap:
-                    candidate_sizes.append([w, h])
-
-        crop_size = random.choice(candidate_sizes)
-        for i in range(2):
-            if abs(crop_size[i] - self.input_size[i]) < 3:
-                crop_size[i] = self.input_size[i]
-
-        crop_w, crop_h = crop_size
-
-        if self.random_crop:
-            x_offset = random.randint(0, img_w - crop_w)
-            y_offset = random.randint(0, img_h - crop_h)
-        else:
-            w_step = (img_w - crop_w) // 4
-            h_step = (img_h - crop_h) // 4
-            candidate_offsets = [
-                (0, 0),  # upper left
-                (4 * w_step, 0),  # upper right
-                (0, 4 * h_step),  # lower left
-                (4 * w_step, 4 * h_step),  # lower right
-                (2 * w_step, 2 * h_step),  # center
-            ]
-            if self.num_fixed_crops == 13:
-                extra_candidate_offsets = [
-                    (0, 2 * h_step),  # center left
-                    (4 * w_step, 2 * h_step),  # center right
-                    (2 * w_step, 4 * h_step),  # lower center
-                    (2 * w_step, 0 * h_step),  # upper center
-                    (1 * w_step, 1 * h_step),  # upper left quarter
-                    (3 * w_step, 1 * h_step),  # upper right quarter
-                    (1 * w_step, 3 * h_step),  # lower left quarter
-                    (3 * w_step, 3 * h_step)  # lower right quarter
-                ]
-                candidate_offsets.extend(extra_candidate_offsets)
-            x_offset, y_offset = random.choice(candidate_offsets)
-
-        new_h, new_w = crop_h, crop_w
-
-        results['crop_bbox'] = np.array(
-            [x_offset, y_offset, x_offset + new_w, y_offset + new_h])
-        results['img_shape'] = (new_h, new_w)
-        results['scales'] = self.scales
-
-        new_origin = np.array([x_offset, y_offset])
-        # OK, finally we look at kpscore to decide whether to visualize
-        results['kp'] = [kp - new_origin for kp in results['kp']]
-
-        if 'per_frame_box' not in results:
-            return results
-
-        new_per_frame_box = []
-        for item in results['per_frame_box']:
-            box_invalid_mask = np.isclose(item, np.ones_like(item) * -1)
-            # all four value should be close to -1
-            box_invalid_mask = np.all(box_invalid_mask, axis=1)
-            box_invalid_mask = np.stack([box_invalid_mask] * 4, axis=-1)
-            new_item = cp.deepcopy(item)
-            new_item[:, :2] -= new_origin
-            new_per_frame_box.append(item * box_invalid_mask + new_item *
-                                     (1 - box_invalid_mask))
-        results['per_frame_box'] = new_per_frame_box
-        return results
-
-    def __repr__(self):
-        repr_str = (f'{self.__class__.__name__}('
-                    f'input_size={self.input_size}, scales={self.scales}, '
-                    f'max_wh_scale_gap={self.max_wh_scale_gap}, '
-                    f'random_crop={self.random_crop}, '
-                    f'num_fixed_crops={self.num_fixed_crops}')
-        return repr_str
+class PoseMultiScaleCrop(MultiScaleCrop):
+    pass
 
 
 @PIPELINES.register_module()
@@ -743,6 +681,10 @@ class Resize(object):
         results['keep_ratio'] = self.keep_ratio
         results['scale_factor'] = results['scale_factor'] * self.scale_factor
 
+        modality = results['modality']
+        if modality == 'Pose':
+            assert not self.lazy
+
         if not self.lazy:
             # The modality matters, if modality == 'RGBFlow', we have to use
             # nchannel_resize. In nchannel_resize, n channels are divided into
@@ -765,7 +707,28 @@ class Resize(object):
                 img = np.concatenate([rgb, flow_x, flow_y], axis=2)
                 return img
 
-            if results['modality'] == 'RGBFlow':
+            if modality == 'Pose':
+                # OK, finally we look at kpscore to decide whether to visualize
+                results['kp'] = [x * self.scale_factor for x in results['kp']]
+
+                if 'per_frame_box' not in results:
+                    return results
+
+                new_per_frame_box = []
+                for item in results['per_frame_box']:
+                    box_invalid_mask = np.isclose(item,
+                                                  np.ones_like(item) * -1)
+                    # all four value should be close to -1
+                    box_invalid_mask = np.all(box_invalid_mask, axis=1)
+                    box_invalid_mask = np.stack(
+                        [box_invalid_mask] * 4, axis=-1)
+                    new_item = cp.deepcopy(item)
+                    new_item[:, 0::2] *= self.scale_factor[0]
+                    new_item[:, 1::2] *= self.scale_factor[1]
+                    new_per_frame_box.append(item * box_invalid_mask +
+                                             new_item * (1 - box_invalid_mask))
+                results['per_frame_box'] = new_per_frame_box
+            elif results['modality'] == 'RGBFlow':
                 results['imgs'] = [
                     nchannel_resize(img) for img in results['imgs']
                 ]
@@ -792,88 +755,8 @@ class Resize(object):
 
 
 @PIPELINES.register_module()
-class PoseResize(object):
-    """Resize pose input to a specific size.
-
-    Lazy not supported.
-    Required keys are "img_shape", "kp", "per_frame_box", added or modified
-    keys are "img_shape", "keep_ratio", "scale_factor", "kp", "per_frame_box".
-
-    Args:
-        scale (float | Tuple[int]): If keep_ratio is True, it serves as scaling
-            factor or maximum size:
-            If it is a float number, the image will be rescaled by this
-            factor, else if it is a tuple of 2 integers, the image will
-            be rescaled as large as possible within the scale.
-            Otherwise, it serves as (w, h) of output size.
-        keep_ratio (bool): If set to True, Images will be resized without
-            changing the aspect ratio. Otherwise, it will resize images to a
-            given size. Default: True.
-    """
-
-    def __init__(self, scale, keep_ratio=True):
-        if isinstance(scale, float):
-            if scale <= 0:
-                raise ValueError(f'Invalid scale {scale}, must be positive.')
-        elif isinstance(scale, tuple):
-            max_long_edge = max(scale)
-            max_short_edge = min(scale)
-            if max_short_edge == -1:
-                scale = (np.inf, max_long_edge)
-        else:
-            raise TypeError(
-                f'Scale must be float or tuple of int, but got {type(scale)}')
-        self.scale = scale
-        self.keep_ratio = keep_ratio
-
-    def __call__(self, results):
-        """Performs the Resize augmentation.
-
-        Args:
-            results (dict): The resulting dict to be modified and passed
-                to the next transform in pipeline.
-        """
-
-        if 'scale_factor' not in results:
-            results['scale_factor'] = np.array([1, 1], dtype=np.float32)
-        img_h, img_w = results['img_shape']
-
-        if self.keep_ratio:
-            new_w, new_h = mmcv.rescale_size((img_w, img_h), self.scale)
-        else:
-            new_w, new_h = self.scale
-
-        self.scale_factor = np.array([new_w / img_w, new_h / img_h],
-                                     dtype=np.float32)
-
-        results['img_shape'] = (new_h, new_w)
-        results['keep_ratio'] = self.keep_ratio
-        results['scale_factor'] = results['scale_factor'] * self.scale_factor
-
-        # OK, finally we look at kpscore to decide whether to visualize
-        results['kp'] = [x * self.scale_factor for x in results['kp']]
-
-        if 'per_frame_box' not in results:
-            return results
-
-        new_per_frame_box = []
-        for item in results['per_frame_box']:
-            box_invalid_mask = np.isclose(item, np.ones_like(item) * -1)
-            # all four value should be close to -1
-            box_invalid_mask = np.all(box_invalid_mask, axis=1)
-            box_invalid_mask = np.stack([box_invalid_mask] * 4, axis=-1)
-            new_item = cp.deepcopy(item)
-            new_item[:, 0::2] *= self.scale_factor[0]
-            new_item[:, 1::2] *= self.scale_factor[1]
-            new_per_frame_box.append(item * box_invalid_mask + new_item *
-                                     (1 - box_invalid_mask))
-        results['per_frame_box'] = new_per_frame_box
-        return results
-
-    def __repr__(self):
-        repr_str = (f'{self.__class__.__name__}('
-                    f'scale={self.scale}, keep_ratio={self.keep_ratio}')
-        return repr_str
+class PoseResize(Resize):
+    pass
 
 
 @PIPELINES.register_module()
@@ -979,6 +862,9 @@ class Flip(object):
 
         results['flip'] = flip
         results['flip_direction'] = self.direction
+
+        crop_quadruple = results.get('crop_quadruple', (0., 0., 1., 1.))
+        results['crop_quadruple'] = flip_quadruple(crop_quadruple)
 
         if not self.lazy:
             if flip:
@@ -1086,6 +972,10 @@ class PoseFlip(object):
         results['flip_direction'] = self.direction
 
         img_width = results['img_shape'][1]
+
+        crop_quadruple = results.get('crop_quadruple', (0., 0., 1., 1.))
+        results['crop_quadruple'] = flip_quadruple(crop_quadruple)
+
         if flip:
             for ind, item in enumerate(results['kp']):
                 item[:, :, 0] = img_width - item[:, :, 0]
@@ -1435,8 +1325,14 @@ class CenterCrop(object):
 
         results['crop_bbox'] = np.array([left, top, right, bottom])
         results['img_shape'] = (new_h, new_w)
+        crop_quadruple = results.get('crop_quadruple', (0., 0., 1., 1.))
+        new_crop_quadruple = (left / img_w, top / img_h, new_w / img_w,
+                              new_h / img_h)
+        crop_quadruple = combine_quadruple(crop_quadruple, new_crop_quadruple)
+        results['crop_quadruple'] = crop_quadruple
 
         modality = results['modality']
+
         if modality == 'Pose':
             assert not self.lazy
 
@@ -1487,6 +1383,11 @@ class CenterCrop(object):
         repr_str = (f'{self.__class__.__name__}(crop_size={self.crop_size}, '
                     f'lazy={self.lazy})')
         return repr_str
+
+
+@PIPELINES.register_module()
+class PoseCenterCrop(CenterCrop):
+    pass
 
 
 @PIPELINES.register_module()
