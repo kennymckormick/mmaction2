@@ -154,7 +154,8 @@ class PoseCompact:
         min_x, max_x = center[0] - box_hwidth, center[0] + box_hwidth
         min_y, max_y = center[1] - box_hheight, center[1] + box_hheight
 
-        if not self.allow_imgpad:
+        # hot update
+        if (not hasattr(self, 'allow_imgpad')) or (not self.allow_imgpad):
             min_x, min_y = int(max(0, min_x)), int(max(0, min_y))
             max_x, max_y = int(min(w, max_x)), int(min(h, max_y))
 
