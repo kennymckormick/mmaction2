@@ -1628,6 +1628,8 @@ class GeneratePoseTarget(object):
         self.with_kp = with_kp
         self.with_limb = with_limb
         self.double = double
+        # an auxiliary const
+        self.eps = 1e-4
 
         assert self.with_kp or self.with_limb, (
             'At least one of "with_limb" '
@@ -1641,8 +1643,9 @@ class GeneratePoseTarget(object):
 
         for center, max_value in zip(centers, max_values):
             mu_x, mu_y = center[0], center[1]
+            if max_value < self.eps:
+                continue
 
-            # 3 sigma is OK
             st_x = max(int(mu_x - 3 * sigma), 0)
             ed_x = min(int(mu_x + 3 * sigma) + 2, img_w)
             st_y = max(int(mu_y - 3 * sigma), 0)
@@ -1670,6 +1673,9 @@ class GeneratePoseTarget(object):
         for start, end, start_value, end_value in zip(starts, ends,
                                                       start_values,
                                                       end_values):
+            value_coeff = min(start_value, end_value)
+            if value_coeff < self.eps:
+                continue
 
             start, end = np.array(start), np.array(end)
             min_x, max_x = min(start[0], end[0]), max(start[0], end[0])
@@ -1715,8 +1721,6 @@ class GeneratePoseTarget(object):
                 a_dominate * d2_start + b_dominate * d2_end +
                 seg_dominate * d2_line)
 
-            # The min value of 2kps should be used
-            value_coeff = min(start_value, end_value)
             patch = np.exp(-d2_seg / 2. / sigma**2)
             patch = patch * value_coeff
 
