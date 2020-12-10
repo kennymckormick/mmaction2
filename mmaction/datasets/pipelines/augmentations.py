@@ -102,9 +102,17 @@ class Fuse(object):
 @PIPELINES.register_module()
 class PoseCompact:
 
-    def __init__(self, padding=1. / 8., threshold=10):
+    def __init__(self, padding=1. / 4., threshold=10, hw_ratio=None):
+        # hw_ratio can be None, float, or tuple(float)
         self.padding = padding
         self.threshold = threshold
+
+        if isinstance(hw_ratio, float):
+            hw_ratio = (hw_ratio, hw_ratio)
+        self.hw_ratio = hw_ratio
+        # None or tuple of float
+
+        # hw_ratio is height / width
         # The minimum threshold of PoseCompact (#pixel after PoseCompact)
         assert self.padding >= 0
 
@@ -129,10 +137,16 @@ class PoseCompact:
         if max_x - min_x < self.threshold or max_y - min_y < self.threshold:
             return results
 
-        min_x -= (max_x - min_x) * self.padding
-        max_x += (max_x - min_x) * self.padding
-        min_y -= (max_y - min_y) * self.padding
-        max_y += (max_y - min_y) * self.padding
+        center = ((max_x + min_x) / 2, (max_y + min_y) / 2)
+        box_hwidth = (max_x - min_x) / 2 * (1 + self.padding)
+        box_hheight = (max_y - min_y) / 2 * (1 + self.padding)
+
+        if self.hw_ratio is not None:
+            box_hheight = max(self.hw_ratio[0] * box_hwidth, box_hheight)
+            box_hwidth = max(1 / self.hw_ratio[1] * box_hheight, box_hwidth)
+
+        min_x, max_x = center[0] - box_hwidth, center[0] + box_hwidth
+        min_y, max_y = center[1] - box_hheight, center[1] + box_hheight
 
         min_x, min_y = int(max(0, min_x)), int(max(0, min_y))
         max_x, max_y = int(min(w, max_x)), int(min(h, max_y))
