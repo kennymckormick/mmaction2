@@ -102,7 +102,11 @@ class Fuse(object):
 @PIPELINES.register_module()
 class PoseCompact:
 
-    def __init__(self, padding=1. / 4., threshold=10, hw_ratio=None):
+    def __init__(self,
+                 padding=1. / 4.,
+                 threshold=10,
+                 hw_ratio=None,
+                 allow_imgpad=False):
         # hw_ratio can be None, float, or tuple(float)
         self.padding = padding
         self.threshold = threshold
@@ -110,6 +114,8 @@ class PoseCompact:
         if isinstance(hw_ratio, float):
             hw_ratio = (hw_ratio, hw_ratio)
         self.hw_ratio = hw_ratio
+
+        self.allow_imgpad = allow_imgpad
         # None or tuple of float
 
         # hw_ratio is height / width
@@ -148,8 +154,10 @@ class PoseCompact:
         min_x, max_x = center[0] - box_hwidth, center[0] + box_hwidth
         min_y, max_y = center[1] - box_hheight, center[1] + box_hheight
 
-        min_x, min_y = int(max(0, min_x)), int(max(0, min_y))
-        max_x, max_y = int(min(w, max_x)), int(min(h, max_y))
+        if not self.allow_imgpad:
+            min_x, min_y = int(max(0, min_x)), int(max(0, min_y))
+            max_x, max_y = int(min(w, max_x)), int(min(h, max_y))
+
         for kp in kps:
             kp_x = kp[:, :, 0]
             kp_y = kp[:, :, 1]
