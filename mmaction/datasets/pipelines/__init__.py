@@ -13,7 +13,8 @@ from .loading import (DecordDecode, DecordInit, DenseSampleFrames,
                       LoadKineticsPose, LoadLocalizationFeature, LoadProposals,
                       OpenCVDecode, OpenCVInit, PoseDecode, PyAVDecode,
                       PyAVInit, RawFrameDecode, RawRGBFlowDecode, SampleFrames,
-                      SampleProposalFrames, UntrimmedSampleFrames)
+                      SampleProposalFrames, UniformSampleFrames,
+                      UntrimmedSampleFrames)
 
 __all__ = [
     'SampleFrames', 'PyAVDecode', 'DecordDecode', 'DenseSampleFrames',
@@ -27,5 +28,6 @@ __all__ = [
     'PyAVInit', 'SampleProposalFrames', 'ColorJitter', 'RGBFlowFlip',
     'RawRGBFlowDecode', 'PoseRandomResizedCrop', 'PoseMultiScaleCrop',
     'PoseResize', 'PoseFlip', 'GeneratePoseTarget', 'PoseDecode',
-    'LoadKineticsPose', 'PoseCompact', 'RandomRescale', 'Heatmap2Potion'
+    'LoadKineticsPose', 'PoseCompact', 'RandomRescale', 'Heatmap2Potion',
+    'UniformSampleFrames'
 ]
