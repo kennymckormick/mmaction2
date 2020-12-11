@@ -396,12 +396,18 @@ class UniformSampleFrames:
         return inds
 
     def __call__(self, results):
-        num_frames = results['num_frames']
+        num_frames = results['total_frames']
         if self.test_mode:
             inds = self._get_test_clips(num_frames)
         else:
             inds = self._get_train_clips(num_frames)
-        return np.mod(inds, num_frames)
+
+        inds = np.mod(inds, num_frames)
+        results['frame_inds'] = inds.astype(np.int)
+        results['clip_len'] = self.clip_len
+        results['frame_interval'] = None
+        results['num_clips'] = self.num_clips
+        return results
 
 
 @PIPELINES.register_module()
