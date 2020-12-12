@@ -135,6 +135,6 @@ def train_model(model,
             if 'interval' in eval_cfg:
                 eval_cfg.pop('interval')
 
-            eval_res = dataset.evaluate(outputs, **eval_cfg)
+            eval_res = test_dataset.evaluate(outputs, **eval_cfg)
             for name, val in eval_res.items():
                 print(f'{name}: {val:.04f}')
