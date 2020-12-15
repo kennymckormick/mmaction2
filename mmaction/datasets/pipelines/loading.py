@@ -403,6 +403,9 @@ class UniformSampleFrames:
             inds = self._get_train_clips(num_frames)
 
         inds = np.mod(inds, num_frames)
+        start_index = results['start_index']
+        inds = inds + start_index
+
         results['frame_inds'] = inds.astype(np.int)
         results['clip_len'] = self.clip_len
         results['frame_interval'] = None
