@@ -1020,6 +1020,12 @@ class PoseDecode(object):
             results (dict): The resulting dict to be modified and passed
                 to the next transform in pipeline.
         """
+        # If no 'frame_inds' in results, set 'frame_inds' as range(num_frames)
+        # by default
+
+        if 'frame_inds' not in results:
+            results['frame_inds'] = np.arange(results['total_frames'])
+
         if results['frame_inds'].ndim != 1:
             results['frame_inds'] = np.squeeze(results['frame_inds'])
 
