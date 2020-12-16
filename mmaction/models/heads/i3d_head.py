@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 from mmcv.cnn import normal_init
 
@@ -50,7 +51,7 @@ class I3DHead(BaseHead):
         """Initiate the parameters from scratch."""
         normal_init(self.fc_cls, std=self.init_std)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         """Defines the computation performed at every call.
 
         Args:
@@ -60,7 +61,16 @@ class I3DHead(BaseHead):
             torch.Tensor: The classification scores for input samples.
         """
         # [N, in_channels, 4, 7, 7]
-        x = self.avg_pool(x)
+        if 'real_clip_len' in kwargs:
+            ret = []
+            real_clip_len = kwargs['real_clip_len']
+            assert x.shape[0] == len(real_clip_len)
+            for i in range(x.shape[0]):
+                clip_len = real_clip_len[i]
+                ret.append(self.avg_pool(x[i:i + 1, :, :clip_len]))
+            x = torch.cat(ret)
+        else:
+            x = self.avg_pool(x)
         # [N, in_channels, 1, 1, 1]
         if self.dropout is not None:
             x = self.dropout(x)

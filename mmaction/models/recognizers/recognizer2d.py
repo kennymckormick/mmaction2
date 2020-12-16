@@ -6,7 +6,7 @@ from .base import BaseRecognizer
 class Recognizer2D(BaseRecognizer):
     """2D recognizer model framework."""
 
-    def forward_train(self, imgs, labels):
+    def forward_train(self, imgs, labels, img_metas=None):
         """Defines the computation performed at every call when training."""
         batches = imgs.shape[0]
         imgs = imgs.reshape((-1, ) + imgs.shape[2:])
@@ -32,7 +32,7 @@ class Recognizer2D(BaseRecognizer):
 
         return losses
 
-    def forward_test(self, imgs):
+    def forward_test(self, imgs, img_metas=None):
         """Defines the computation performed at every call when evaluation and
         testing."""
         batches = imgs.shape[0]

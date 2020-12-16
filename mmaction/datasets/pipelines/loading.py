@@ -322,41 +322,41 @@ class UniformSampleFrames:
 
     def __init__(self,
                  clip_len,
+                 sample_ratio=-1,
                  num_clips=1,
                  test_mode=False,
                  random_seed=255):
         self.clip_len = clip_len
+        self.sample_ratio = sample_ratio
         self.num_clips = num_clips
         self.test_mode = test_mode
         self.random_seed = random_seed
 
-    def _get_train_clips(self, num_frames):
+    def _get_train_clips(self, num_frames, clip_len):
         assert self.num_clips == 1
-        if num_frames < self.clip_len:
+        if num_frames < clip_len:
             start = np.random.randint(0, num_frames)
-            inds = np.arange(start, start + self.clip_len)
-        elif self.clip_len <= num_frames < 2 * self.clip_len:
-            basic = np.arange(self.clip_len)
+            inds = np.arange(start, start + clip_len)
+        elif clip_len <= num_frames < 2 * clip_len:
+            basic = np.arange(clip_len)
             inds = np.random.choice(
-                self.clip_len + 1, num_frames - self.clip_len, replace=False)
-            offset = np.zeros(self.clip_len + 1, dtype=np.int64)
+                clip_len + 1, num_frames - clip_len, replace=False)
+            offset = np.zeros(clip_len + 1, dtype=np.int64)
             offset[inds] = 1
             offset = np.cumsum(offset)
             inds = basic + offset[:-1]
         else:
-            bids = np.array([
-                i * num_frames // self.clip_len
-                for i in range(self.clip_len + 1)
-            ])
+            bids = np.array(
+                [i * num_frames // clip_len for i in range(clip_len + 1)])
             bsize = np.diff(bids)
-            bst = bids[:self.clip_len]
+            bst = bids[:clip_len]
             offset = np.random.randint(bsize)
             inds = bst + offset
         return inds
 
-    def _get_test_clips(self, num_frames):
+    def _get_test_clips(self, num_frames, clip_len):
         np.random.seed(self.random_seed)
-        if num_frames < self.clip_len:
+        if num_frames < clip_len:
             # Then we use a simple strategy
             if num_frames < self.num_clips:
                 start_inds = list(range(self.num_clips))
@@ -366,28 +366,24 @@ class UniformSampleFrames:
                     for i in range(self.num_clips)
                 ]
             inds = np.concatenate(
-                [np.arange(i, i + self.clip_len) for i in start_inds])
-        elif self.clip_len <= num_frames < self.clip_len * 2:
+                [np.arange(i, i + clip_len) for i in start_inds])
+        elif clip_len <= num_frames < clip_len * 2:
             all_inds = []
             for i in range(self.num_clips):
-                basic = np.arange(self.clip_len)
+                basic = np.arange(clip_len)
                 inds = np.random.choice(
-                    self.clip_len + 1,
-                    num_frames - self.clip_len,
-                    replace=False)
-                offset = np.zeros(self.clip_len + 1, dtype=np.int64)
+                    clip_len + 1, num_frames - clip_len, replace=False)
+                offset = np.zeros(clip_len + 1, dtype=np.int64)
                 offset[inds] = 1
                 offset = np.cumsum(offset)
                 inds = basic + offset[:-1]
                 all_inds.append(inds)
             inds = np.concatenate(all_inds)
         else:
-            bids = np.array([
-                i * num_frames // self.clip_len
-                for i in range(self.clip_len + 1)
-            ])
+            bids = np.array(
+                [i * num_frames // clip_len for i in range(clip_len + 1)])
             bsize = np.diff(bids)
-            bst = bids[:self.clip_len]
+            bst = bids[:clip_len]
             all_inds = []
             for i in range(self.num_clips):
                 offset = np.random.randint(bsize)
@@ -397,10 +393,17 @@ class UniformSampleFrames:
 
     def __call__(self, results):
         num_frames = results['total_frames']
-        if self.test_mode:
-            inds = self._get_test_clips(num_frames)
+        if self.sample_ratio <= 0:
+            clip_len = self.clip_len
         else:
-            inds = self._get_train_clips(num_frames)
+            clip_len = int(num_frames / self.sample_ratio)
+            # self.clip_len is the upper bound
+            clip_len = min(clip_len, self.clip_len)
+
+        if self.test_mode:
+            inds = self._get_test_clips(num_frames, clip_len)
+        else:
+            inds = self._get_train_clips(num_frames, clip_len)
 
         inds = np.mod(inds, num_frames)
         start_index = results['start_index']
@@ -408,6 +411,8 @@ class UniformSampleFrames:
 
         results['frame_inds'] = inds.astype(np.int)
         results['clip_len'] = self.clip_len
+        if self.sample_ratio > 0:
+            results['real_clip_len'] = clip_len
         results['frame_interval'] = None
         results['num_clips'] = self.num_clips
         return results

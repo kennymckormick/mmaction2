@@ -40,6 +40,12 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
 
         self.train_cfg = train_cfg
         self.test_cfg = test_cfg
+        self.train_t_stride, self.test_t_stride = None, None
+        if 't_stride' in train_cfg:
+            self.train_t_stride = train_cfg['t_stride']
+        if 't_stride' in test_cfg:
+            self.test_t_stride = test_cfg['t_stride']
+
         self.init_weights()
 
         self.fp16_enabled = False
@@ -100,12 +106,12 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         return cls_score
 
     @abstractmethod
-    def forward_train(self, imgs, labels):
+    def forward_train(self, imgs, labels, img_metas=None):
         """Defines the computation performed at every call when training."""
         pass
 
     @abstractmethod
-    def forward_test(self, imgs):
+    def forward_test(self, imgs, img_metas=None):
         """Defines the computation performed at every call when evaluation and
         testing."""
         pass
