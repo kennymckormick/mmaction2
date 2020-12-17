@@ -54,10 +54,11 @@ class Recognizer3D(BaseRecognizer):
         num_segs = imgs.shape[1]
         imgs = imgs.reshape((-1, ) + imgs.shape[2:])
 
-        new_real_clip_len = []
-        for i in range(len(real_clip_len)):
-            new_real_clip_len.extend([real_clip_len[i]] * num_segs)
-        real_clip_len = new_real_clip_len
+        if dynamic:
+            new_real_clip_len = []
+            for i in range(len(real_clip_len)):
+                new_real_clip_len.extend([real_clip_len[i]] * num_segs)
+            real_clip_len = new_real_clip_len
 
         x = self.extract_feat(imgs)
         if hasattr(self, 'neck'):
