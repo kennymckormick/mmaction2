@@ -152,14 +152,17 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
 
         return loss, log_vars
 
-    def forward(self, imgs, label=None, return_loss=True):
+    def forward(self, imgs, label=None, return_loss=True, **kwargs):
         """Define the computation performed at every call."""
+        img_metas = None
+        if 'img_metas' in kwargs:
+            img_metas = kwargs['img_metas']
         if return_loss:
             if label is None:
                 raise ValueError('Label should not be None.')
-            return self.forward_train(imgs, label)
+            return self.forward_train(imgs, label, img_metas=img_metas)
         else:
-            return self.forward_test(imgs)
+            return self.forward_test(imgs, img_metas=img_metas)
 
     def train_step(self, data_batch, optimizer, **kwargs):
         """The iteration step during training.
@@ -190,7 +193,7 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         imgs = data_batch['imgs']
         label = data_batch['label']
 
-        losses = self(imgs, label)
+        losses = self(imgs, label, **kwargs)
 
         loss, log_vars = self._parse_losses(losses)
 
@@ -211,7 +214,7 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         imgs = data_batch['imgs']
         label = data_batch['label']
 
-        losses = self(imgs, label)
+        losses = self(imgs, label, **kwargs)
 
         loss, log_vars = self._parse_losses(losses)
 
