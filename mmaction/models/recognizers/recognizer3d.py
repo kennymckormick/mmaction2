@@ -14,8 +14,8 @@ class Recognizer3D(BaseRecognizer):
         losses = dict()
 
         dynamic = False
-        if img_metas is not None and 'real_clip_len' in img_metas:
-            real_clip_len = img_metas['real_clip_len']
+        if img_metas is not None and 'real_clip_len' in img_metas[0]:
+            real_clip_len = [x['real_clip_len'] for x in img_metas]
             assert self.train_t_stride is not None
             real_clip_len = [
                 math.ceil(x / self.train_t_stride) for x in real_clip_len
@@ -43,8 +43,8 @@ class Recognizer3D(BaseRecognizer):
         testing."""
 
         dynamic = False
-        if img_metas is not None and 'real_clip_len' in img_metas:
-            real_clip_len = img_metas['real_clip_len']
+        if img_metas is not None and 'real_clip_len' in img_metas[0]:
+            real_clip_len = [x['real_clip_len'] for x in img_metas]
             assert self.test_t_stride is not None
             real_clip_len = [
                 math.ceil(x / self.test_t_stride) for x in real_clip_len
