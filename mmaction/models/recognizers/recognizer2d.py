@@ -54,7 +54,8 @@ class Recognizer2D(BaseRecognizer):
             num_segs = 1
 
         cls_score = self.cls_head(x, num_segs)
-        cls_score = self.average_clip(cls_score)
+        # That will not affect TSN, TSM, etc. Since their average_clips is None
+        cls_score = self.average_clip(cls_score, num_segs)
 
         return cls_score.cpu().numpy()
 
