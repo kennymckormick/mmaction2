@@ -1802,8 +1802,8 @@ class GeneratePoseTarget(object):
 
         if 'real_clip_len' in results:
             num_pad = results['clip_len'] - results['real_clip_len']
-        for i in range(num_pad):
-            imgs.append(np.zeros_like(imgs[0]))
+            for i in range(num_pad):
+                imgs.append(np.zeros_like(imgs[0]))
 
         return imgs
 

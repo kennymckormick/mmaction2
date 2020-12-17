@@ -28,9 +28,9 @@ class Recognizer3D(BaseRecognizer):
             losses.update(loss_aux)
 
         if dynamic:
-            cls_score = self.cls_head(x)
-        else:
             cls_score = self.cls_head(x, real_clip_len=real_clip_len)
+        else:
+            cls_score = self.cls_head(x)
 
         gt_labels = labels.squeeze()
         loss_cls = self.cls_head.loss(cls_score, gt_labels)
