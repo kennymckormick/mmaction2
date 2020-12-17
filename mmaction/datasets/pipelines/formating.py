@@ -148,14 +148,14 @@ class Collect(object):
     ``meta_keys`` into a meta item called ``meta_name``.This is usually
     the last stage of the data loader pipeline.
     For example, when keys='imgs', meta_keys=('filename', 'label',
-    'original_shape'), meta_name='img_meta', the results will be a dict with
-    keys 'imgs' and 'img_meta', where 'img_meta' is a DataContainer of another
-    dict with keys 'filename', 'label', 'original_shape'.
+    'original_shape'), meta_name='img_metas', the results will be a dict with
+    keys 'imgs' and 'img_metas', where 'img_metas' is a DataContainer of
+    another dict with keys 'filename', 'label', 'original_shape'.
 
     Args:
         keys (Sequence[str]): Required keys to be collected.
         meta_name (str): The name of the key that contains meta infomation.
-            This key is always populated. Default: "img_meta".
+            This key is always populated. Default: "img_metas".
         meta_keys (Sequence[str]): Keys that are collected under meta_name.
             The contents of the ``meta_name`` dictionary depends on
             ``meta_keys``.
@@ -181,7 +181,7 @@ class Collect(object):
                  keys,
                  meta_keys=('filename', 'label', 'original_shape', 'img_shape',
                             'pad_shape', 'flip_direction', 'img_norm_cfg'),
-                 meta_name='img_meta'):
+                 meta_name='img_metas'):
         self.keys = keys
         self.meta_keys = meta_keys
         self.meta_name = meta_name
