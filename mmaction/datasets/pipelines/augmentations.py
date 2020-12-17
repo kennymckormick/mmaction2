@@ -1829,6 +1829,7 @@ class Heatmap2Potion:
     def __init__(self, C, option='full'):
         self.C = C
         self.option = option
+        self.eps = 1e-4
         assert isinstance(C, int)
         assert C >= 2
         assert self.option in ['U', 'N', 'I', 'full']
@@ -1867,7 +1868,7 @@ class Heatmap2Potion:
         # The shape of U_norm is N x 1 x 1 x K x C
         U_norm = np.max(
             np.max(heatmap_S, axis=1, keepdims=True), axis=2, keepdims=True)
-        heatmap_U = heatmap_S / U_norm
+        heatmap_U = heatmap_S / (U_norm + self.eps)
         heatmap_I = np.sum(heatmap_U, axis=-1, keepdims=True)
         heatmap_N = heatmap_U / (heatmap_I + 1)
         if self.option == 'U':
