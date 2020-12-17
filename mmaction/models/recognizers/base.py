@@ -190,8 +190,9 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
                 DDP, it means the batch size on each GPU), which is used for
                 averaging the logs.
         """
-        imgs = data_batch['imgs']
-        label = data_batch['label']
+        imgs = data_batch.pop('imgs')
+        label = data_batch.pop('label')
+        kwargs.update(data_batch)
 
         losses = self(imgs, label, **kwargs)
 
@@ -211,8 +212,9 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         during val epochs. Note that the evaluation after training epochs is
         not implemented with this method, but an evaluation hook.
         """
-        imgs = data_batch['imgs']
-        label = data_batch['label']
+        imgs = data_batch.pop('imgs')
+        label = data_batch.pop('label')
+        kwargs.update(data_batch)
 
         losses = self(imgs, label, **kwargs)
 
