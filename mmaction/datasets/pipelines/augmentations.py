@@ -1837,7 +1837,13 @@ class Heatmap2Potion:
     def __call__(self, results):
         assert results['modality'] == 'Pose'
         heatmaps = results['imgs']
-        clip_len = results['clip_len']
+
+        if 'clip_len' in results:
+            clip_len = results['clip_len']
+        else:
+            # Just for Video-PoTion generation
+            clip_len = heatmaps.shape[0]
+
         C = self.C
         heatmaps = heatmaps.reshape((-1, clip_len) + heatmaps.shape[1:])
 
