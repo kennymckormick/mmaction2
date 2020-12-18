@@ -411,8 +411,13 @@ class UniformSampleFrames:
 
         results['frame_inds'] = inds.astype(np.int)
         results['clip_len'] = self.clip_len
-        if self.sample_ratio > 0:
-            results['real_clip_len'] = clip_len
+
+        if self.test_mode:
+            results['clip_len'] = clip_len
+        else:
+            if self.sample_ratio > 0:
+                results['real_clip_len'] = clip_len
+
         results['frame_interval'] = None
         results['num_clips'] = self.num_clips
         return results
