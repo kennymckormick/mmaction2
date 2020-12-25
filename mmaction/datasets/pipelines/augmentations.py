@@ -158,6 +158,9 @@ class PoseCompact:
         if (not hasattr(self, 'allow_imgpad')) or (not self.allow_imgpad):
             min_x, min_y = int(max(0, min_x)), int(max(0, min_y))
             max_x, max_y = int(min(w, max_x)), int(min(h, max_y))
+        else:
+            min_x, min_y = int(min_x), int(min_y)
+            max_x, max_y = int(max_x), int(max_y)
 
         for kp in kps:
             kp_x = kp[:, :, 0]
