@@ -717,23 +717,28 @@ class Resize(object):
         if not self.lazy:
             # The modality matters, if modality == 'RGBFlow', we have to use
             # nchannel_resize. In nchannel_resize, n channels are divided into
-            # groups of 3 channels or 1 channel. Currently only support 5
-            # channels
+            # groups of 3 channels or 1 channel.
             def nchannel_resize(img):
                 num_channels = img.shape[2]
-                assert num_channels == 5
-                rgb = mmcv.imresize(
-                    img[:, :, :3], (new_w, new_h),
-                    interpolation=self.interpolation)
-                flow_x = mmcv.imresize(
-                    img[:, :, 3], (new_w, new_h),
-                    interpolation=self.interpolation)
-                flow_y = mmcv.imresize(
-                    img[:, :, 4], (new_w, new_h),
-                    interpolation=self.interpolation)
-                flow_x = flow_x[:, :, np.newaxis]
-                flow_y = flow_y[:, :, np.newaxis]
-                img = np.concatenate([rgb, flow_x, flow_y], axis=2)
+                idx = 0
+                imgs = []
+                while idx < num_channels:
+                    multi = False
+                    if idx + 3 <= num_channels:
+                        multi = True
+                    if multi:
+                        img = mmcv.imresize(
+                            img[:, :, idx:idx + 3], (new_w, new_h),
+                            interpolation=self.interpolation)
+                    else:
+                        img = mmcv.imresize(
+                            img[:, :, idx], (new_w, new_h),
+                            interpolation=self.interpolation)
+                        img = img[..., np.newaxis]
+                    idx += 3 if multi else 1
+                    imgs.append(img)
+
+                img = np.concatenate(imgs, axis=2)
                 return img
 
             if modality == 'Pose':
@@ -757,7 +762,7 @@ class Resize(object):
                     new_per_frame_box.append(item * box_invalid_mask +
                                              new_item * (1 - box_invalid_mask))
                 results['per_frame_box'] = new_per_frame_box
-            elif results['modality'] == 'RGBFlow':
+            elif results['modality'] in ['RGBFlow', 'PoTion']:
                 results['imgs'] = [
                     nchannel_resize(img) for img in results['imgs']
                 ]
@@ -864,11 +869,19 @@ class Flip(object):
     """
     _directions = ['horizontal', 'vertical']
 
-    def __init__(self, flip_ratio=0.5, direction='horizontal', lazy=False):
+    def __init__(self,
+                 flip_ratio=0.5,
+                 direction='horizontal',
+                 left=[],
+                 right=[],
+                 lazy=False):
         if direction not in self._directions:
             raise ValueError(f'Direction {direction} is not supported. '
                              f'Currently support ones are {self._directions}')
         self.flip_ratio = flip_ratio
+        self.left = left
+        self.right = right
+        assert len(self.left) == len(self.right)
         self.direction = direction
         self.lazy = lazy
 
@@ -897,17 +910,30 @@ class Flip(object):
 
         if not self.lazy:
             if flip:
-                for i, img in enumerate(results['imgs']):
+                # Inplace ops, no need to write back
+                imgs = results['imgs']
+                for i, img in enumerate(imgs):
                     mmcv.imflip_(img, self.direction)
-                lt = len(results['imgs'])
-                for i in range(0, lt, 2):
-                    # flow with even indexes are x_flow, which need to be
-                    # inverted when doing horizontal flip
-                    if modality == 'Flow':
-                        results['imgs'][i] = mmcv.iminvert(results['imgs'][i])
+                lt = len(imgs)
+                # Note: iminvert is used for [0-255], before normalization,e.g.
 
-            else:
-                results['imgs'] = list(results['imgs'])
+                if modality == 'Flow':
+                    # 1st Frame of each 2 frames is flow-x
+                    for i in range(0, lt, 2):
+                        imgs[i] = mmcv.iminvert(imgs[i])
+                elif modality == 'RGBFlow':
+                    # 4th channel of each frame is flow-x
+                    for i in range(lt):
+                        imgs[i][..., 3] = mmcv.iminvert(imgs[i][..., 3])
+                elif modality == 'PoTion':
+                    assert lt == 1
+                    img = imgs[0]
+                    npair = len(self.left)
+                    for i in range(npair):
+                        left, right = self.left[i], self.right[i]
+                        tmp = cp.deepcopy(img[..., left])
+                        img[..., left] = img[..., right]
+                        img[..., right] = tmp
         else:
             lazyop = results['lazy']
             if lazyop['flip']:
@@ -926,67 +952,7 @@ class Flip(object):
 
 
 @PIPELINES.register_module()
-class RGBFlowFlip(object):
-    """Flip the input images with a probability."""
-    _directions = ['horizontal', 'vertical']
-
-    def __init__(self, flip_ratio=0.5, direction='horizontal'):
-        if direction not in self._directions:
-            raise ValueError(f'Direction {direction} is not supported. '
-                             f'Currently support ones are {self._directions}')
-        self.flip_ratio = flip_ratio
-        self.direction = direction
-
-    def __call__(self, results):
-        """Performs the Flip augmentation.
-
-        Args:
-            results (dict): The resulting dict to be modified and passed
-                to the next transform in pipeline.
-        """
-        modality = results['modality']
-        assert modality == 'RGBFlow'
-
-        if np.random.rand() < self.flip_ratio:
-            flip = True
-        else:
-            flip = False
-
-        results['flip'] = flip
-        results['flip_direction'] = self.direction
-
-        if flip:
-            for i, img in enumerate(results['imgs']):
-                assert img.shape[2] == 5
-                mmcv.imflip_(img, self.direction)
-                # The Flow x component
-                img[:, :, 3] = mmcv.iminvert(img[:, :, 3])
-
-        return results
-
-    def __repr__(self):
-        repr_str = (
-            f'{self.__class__.__name__}('
-            f'flip_ratio={self.flip_ratio}, direction={self.direction})')
-        return repr_str
-
-
-@PIPELINES.register_module()
-class PoseFlip(object):
-    _directions = ['horizontal', 'vertical']
-
-    def __init__(self,
-                 flip_ratio=0.5,
-                 direction='horizontal',
-                 left=[],
-                 right=[]):
-        if direction not in self._directions:
-            raise ValueError(f'Direction {direction} is not supported. '
-                             f'Currently support ones are {self._directions}')
-        self.flip_ratio = flip_ratio
-        self.direction = direction
-        self.left = left
-        self.right = right
+class PoseFlip(Flip):
 
     def __call__(self, results):
         modality = results['modality']
