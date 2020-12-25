@@ -128,6 +128,9 @@ class PoseCompact:
         kps = results['kp']
         min_x, min_y, max_x, max_y = np.Inf, np.Inf, -np.Inf, -np.Inf
         for kp in kps:
+            # Make NaN zero
+            kp[np.isnan(kp)] = 0.
+
             kp_x = kp[:, :, 0]
             kp_y = kp[:, :, 1]
             # There is at least one legal kp
