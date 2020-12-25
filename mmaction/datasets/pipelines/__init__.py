@@ -11,9 +11,9 @@ from .formating import (Collect, FormatShape, ImageToTensor, ToDataContainer,
 from .loading import (DecordDecode, DecordInit, DenseSampleFrames,
                       FrameSelector, GenerateLocalizationLabels,
                       LoadKineticsPose, LoadLocalizationFeature, LoadProposals,
-                      OpenCVDecode, OpenCVInit, PoseDecode, PyAVDecode,
-                      PyAVInit, RawFrameDecode, RawRGBFlowDecode, SampleFrames,
-                      SampleProposalFrames, UniformSampleFrames,
+                      OpenCVDecode, OpenCVInit, PoseDecode, PoTionDecode,
+                      PyAVDecode, PyAVInit, RawFrameDecode, RawRGBFlowDecode,
+                      SampleFrames, SampleProposalFrames, UniformSampleFrames,
                       UntrimmedSampleFrames)
 
 __all__ = [
@@ -29,5 +29,5 @@ __all__ = [
     'RawRGBFlowDecode', 'PoseRandomResizedCrop', 'PoseMultiScaleCrop',
     'PoseResize', 'PoseFlip', 'GeneratePoseTarget', 'PoseDecode',
     'LoadKineticsPose', 'PoseCompact', 'RandomRescale', 'Heatmap2Potion',
-    'UniformSampleFrames'
+    'UniformSampleFrames', 'PoTionDecode'
 ]

@@ -1016,6 +1016,42 @@ class RawFrameDecode(object):
         return results
 
 
+@PIPELINES.register_module()
+class PoTionDecode(object):
+    """Load and decode frames with given indices.
+
+    Required keys are "filename", added or modified keys are "imgs",
+    "img_shape" and "original_shape".
+
+    Args:
+        io_backend (str): IO backend where frames are stored. Default: 'disk'.
+        kwargs (dict, optional): Arguments for FileClient.
+    """
+
+    def __init__(self, io_backend='disk', **kwargs):
+        self.io_backend = io_backend
+        self.kwargs = kwargs
+        self.file_client = None
+
+    def __call__(self, results):
+        """Perform the ``PoTionDecode``.
+
+        Args:
+            results (dict): The resulting dict to be modified and passed
+                to the next transform in pipeline.
+        """
+        if self.file_client is None:
+            self.file_client = FileClient(self.io_backend, **self.kwargs)
+
+        bytes = self.file_client.get(results['filename'])
+        img = np.load(io.BytesIO(bytes))
+        results['imgs'] = [img]
+        results['original_shape'] = img.shape[:2]
+        results['img_shape'] = img.shape[:2]
+
+        return results
+
+
 # Support Pose w. MultiPerson
 # Decide to make `per_frame_box` optional
 @PIPELINES.register_module()
