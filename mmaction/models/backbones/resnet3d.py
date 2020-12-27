@@ -10,6 +10,40 @@ from ...utils import get_root_logger
 from ..registry import BACKBONES
 
 
+# We would like to set se_ratio to 1 / 4 by default
+class SEModule(nn.Module):
+
+    def __init__(self, channels, reduction):
+        super().__init__()
+        self.avg_pool = nn.AdaptiveAvgPool3d(1)
+        self.bottleneck = self._round_width(channels, reduction)
+        self.fc1 = nn.Conv3d(
+            channels, self.bottleneck, kernel_size=1, padding=0)
+        self.relu = nn.ReLU()
+        self.fc2 = nn.Conv3d(
+            self.bottleneck, channels, kernel_size=1, padding=0)
+        self.sigmoid = nn.Sigmoid()
+
+    @staticmethod
+    def _round_width(width, multiplier, min_width=8, divisor=8):
+        width *= multiplier
+        min_width = min_width or divisor
+        width_out = max(min_width,
+                        int(width + divisor / 2) // divisor * divisor)
+        if width_out < 0.9 * width:
+            width_out += divisor
+        return int(width_out)
+
+    def forward(self, x):
+        module_input = x
+        x = self.avg_pool(x)
+        x = self.fc1(x)
+        x = self.relu(x)
+        x = self.fc2(x)
+        x = self.sigmoid(x)
+        return module_input * x
+
+
 class BasicBlock3d(nn.Module):
     """BasicBlock 3d block for ResNet3D.
 
@@ -56,7 +90,8 @@ class BasicBlock3d(nn.Module):
                  conv_cfg=dict(type='Conv3d'),
                  norm_cfg=dict(type='BN3d'),
                  act_cfg=dict(type='ReLU'),
-                 with_cp=False):
+                 with_cp=False,
+                 se=None):
         super().__init__()
         assert style in ['pytorch', 'caffe']
         assert inflate_style in ['3x1x1', '3x3x3']
@@ -75,6 +110,7 @@ class BasicBlock3d(nn.Module):
         self.with_cp = with_cp
         self.non_local = non_local
         self.non_local_cfg = non_local_cfg
+        self.se = se
 
         self.conv1_stride_s = spatial_stride
         self.conv2_stride_s = 1
@@ -117,6 +153,10 @@ class BasicBlock3d(nn.Module):
             norm_cfg=self.norm_cfg,
             act_cfg=None)
 
+        if self.se is not None:
+            assert isinstance(self.se, float)
+            self.se_module = SEModule(planes, self.se)
+
         self.downsample = downsample
         self.relu = build_activation_layer(self.act_cfg)
 
@@ -133,6 +173,9 @@ class BasicBlock3d(nn.Module):
 
             out = self.conv1(x)
             out = self.conv2(out)
+
+            if self.se is not None:
+                out = self.se_module(out)
 
             if self.downsample is not None:
                 identity = self.downsample(x)
@@ -198,7 +241,8 @@ class Bottleneck3d(nn.Module):
                  conv_cfg=dict(type='Conv3d'),
                  norm_cfg=dict(type='BN3d'),
                  act_cfg=dict(type='ReLU'),
-                 with_cp=False):
+                 with_cp=False,
+                 se=None):
         super().__init__()
         assert style in ['pytorch', 'caffe']
         assert inflate_style in ['3x1x1', '3x3x3']
@@ -217,6 +261,7 @@ class Bottleneck3d(nn.Module):
         self.with_cp = with_cp
         self.non_local = non_local
         self.non_local_cfg = non_local_cfg
+        self.se = se
 
         if self.style == 'pytorch':
             self.conv1_stride_s = 1
@@ -269,7 +314,7 @@ class Bottleneck3d(nn.Module):
             bias=False,
             conv_cfg=self.conv_cfg,
             norm_cfg=self.norm_cfg,
-            act_cfg=self.act_cfg)
+            act_cfg=None)
 
         self.conv3 = ConvModule(
             planes,
@@ -280,6 +325,10 @@ class Bottleneck3d(nn.Module):
             norm_cfg=self.norm_cfg,
             # No activation in the third ConvModule for bottleneck
             act_cfg=None)
+
+        if self.se is not None:
+            assert isinstance(self.se, float)
+            self.se_module = SEModule(planes, self.se)
 
         self.downsample = downsample
         self.relu = build_activation_layer(self.act_cfg)
@@ -297,8 +346,11 @@ class Bottleneck3d(nn.Module):
 
             out = self.conv1(x)
             out = self.conv2(out)
-            out = self.conv3(out)
+            if self.se is not None:
+                out = self.se_module(out)
+            out = self.relu(out)
 
+            out = self.conv3(out)
             if self.downsample is not None:
                 identity = self.downsample(x)
 
@@ -403,6 +455,7 @@ class ResNet3d(nn.Module):
                  lw_dropout=0,
                  sw_dropout=0,
                  with_pool2=True,
+                 se=None,
                  style='pytorch',
                  frozen_stages=-1,
                  inflate=(1, 1, 1, 1),
@@ -431,6 +484,7 @@ class ResNet3d(nn.Module):
         assert max(out_indices) < num_stages
         self.spatial_strides = spatial_strides
         self.temporal_strides = temporal_strides
+        self.se = se
         self.dilations = dilations
         assert len(spatial_strides) == len(temporal_strides) == len(
             dilations) == num_stages
@@ -495,6 +549,7 @@ class ResNet3d(nn.Module):
                 inflate=self.stage_inflations[i],
                 inflate_style=self.inflate_style,
                 with_cp=with_cp,
+                se=self.se,
                 **kwargs)
             self.inplanes = planes * self.block.expansion
             layer_name = f'layer{i + 1}'
@@ -523,6 +578,7 @@ class ResNet3d(nn.Module):
                        act_cfg=None,
                        conv_cfg=None,
                        with_cp=False,
+                       se=None,
                        **kwargs):
         """Build residual layer for ResNet3D.
 
@@ -597,6 +653,7 @@ class ResNet3d(nn.Module):
                 conv_cfg=conv_cfg,
                 act_cfg=act_cfg,
                 with_cp=with_cp,
+                se=se,
                 **kwargs))
         if lw_dropout > 0:
             layers.append(nn.Dropout(lw_dropout))
@@ -618,6 +675,7 @@ class ResNet3d(nn.Module):
                     conv_cfg=conv_cfg,
                     act_cfg=act_cfg,
                     with_cp=with_cp,
+                    se=se,
                     **kwargs))
             if lw_dropout > 0:
                 layers.append(nn.Dropout(lw_dropout))
