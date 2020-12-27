@@ -29,7 +29,6 @@ class ResNet3dSlowOnly(ResNet3dPathway):
                  pool1_stride_t=1,
                  inflate=(0, 0, 1, 1),
                  with_pool2=False,
-                 se=None,
                  **kwargs):
         super().__init__(
             *args,
@@ -39,7 +38,6 @@ class ResNet3dSlowOnly(ResNet3dPathway):
             pool1_stride_t=pool1_stride_t,
             inflate=inflate,
             with_pool2=with_pool2,
-            se=se,
             **kwargs)
 
         assert not self.lateral
