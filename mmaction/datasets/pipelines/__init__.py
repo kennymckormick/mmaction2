@@ -3,8 +3,7 @@ from .augmentations import (CenterCrop, ColorJitter, Flip, Fuse,
                             MultiScaleCrop, Normalize, PoseCompact, PoseFlip,
                             PoseMultiScaleCrop, PoseRandomResizedCrop,
                             PoseResize, RandomCrop, RandomRescale,
-                            RandomResizedCrop, Resize, RGBFlowFlip, TenCrop,
-                            ThreeCrop)
+                            RandomResizedCrop, Resize, TenCrop, ThreeCrop)
 from .compose import Compose
 from .formating import (Collect, FormatShape, ImageToTensor, ToDataContainer,
                         ToTensor, Transpose)
@@ -25,9 +24,8 @@ __all__ = [
     'GenerateLocalizationLabels', 'LoadLocalizationFeature', 'LoadProposals',
     'DecordInit', 'OpenCVInit', 'PyAVInit', 'SampleProposalFrames',
     'UntrimmedSampleFrames', 'RawFrameDecode', 'DecordInit', 'OpenCVInit',
-    'PyAVInit', 'SampleProposalFrames', 'ColorJitter', 'RGBFlowFlip',
-    'RawRGBFlowDecode', 'PoseRandomResizedCrop', 'PoseMultiScaleCrop',
-    'PoseResize', 'PoseFlip', 'GeneratePoseTarget', 'PoseDecode',
-    'LoadKineticsPose', 'PoseCompact', 'RandomRescale', 'Heatmap2Potion',
-    'UniformSampleFrames', 'PoTionDecode'
+    'PyAVInit', 'SampleProposalFrames', 'ColorJitter', 'RawRGBFlowDecode',
+    'PoseRandomResizedCrop', 'PoseMultiScaleCrop', 'PoseResize', 'PoseFlip',
+    'GeneratePoseTarget', 'PoseDecode', 'LoadKineticsPose', 'PoseCompact',
+    'RandomRescale', 'Heatmap2Potion', 'UniformSampleFrames', 'PoTionDecode'
 ]
