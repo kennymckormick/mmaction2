@@ -622,6 +622,8 @@ class ResNet3d(nn.Module):
                                             int) else (inflate, ) * blocks
         non_local = non_local if not isinstance(
             non_local, int) else (non_local, ) * blocks
+        dilation = dilation if not isinstance(dilation,
+                                              int) else (dilation, ) * blocks
         assert len(inflate) == blocks and len(non_local) == blocks
         downsample = None
         if spatial_stride != 1 or inplanes != planes * block.expansion:
@@ -642,7 +644,7 @@ class ResNet3d(nn.Module):
                 planes,
                 spatial_stride=spatial_stride,
                 temporal_stride=temporal_stride,
-                dilation=dilation,
+                dilation=dilation[0],
                 downsample=downsample,
                 style=style,
                 inflate=(inflate[0] == 1),
@@ -665,7 +667,7 @@ class ResNet3d(nn.Module):
                     planes,
                     spatial_stride=1,
                     temporal_stride=1,
-                    dilation=dilation,
+                    dilation=dilation[i],
                     style=style,
                     inflate=(inflate[i] == 1),
                     inflate_style=inflate_style,
