@@ -95,6 +95,7 @@ class ResNet3dPathway(ResNet3d):
                        conv_cfg=None,
                        norm_cfg=None,
                        act_cfg=None,
+                       se=None,
                        with_cp=False):
         """Build residual layer for Slowfast.
 
@@ -174,7 +175,8 @@ class ResNet3dPathway(ResNet3d):
                 conv_cfg=conv_cfg,
                 norm_cfg=norm_cfg,
                 act_cfg=act_cfg,
-                with_cp=with_cp))
+                with_cp=with_cp,
+                se=se))
         if lw_dropout > 0:
             layers.append(nn.Dropout(lw_dropout))
         inplanes = planes * block.expansion
@@ -195,7 +197,8 @@ class ResNet3dPathway(ResNet3d):
                     conv_cfg=conv_cfg,
                     norm_cfg=norm_cfg,
                     act_cfg=act_cfg,
-                    with_cp=with_cp))
+                    with_cp=with_cp,
+                    se=se))
             if lw_dropout > 0:
                 layers.append(nn.Dropout(lw_dropout))
         if sw_dropout > 0:
