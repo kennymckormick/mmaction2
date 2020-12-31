@@ -41,10 +41,14 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         self.train_cfg = train_cfg
         self.test_cfg = test_cfg
         self.train_t_stride, self.test_t_stride = None, None
-        if 't_stride' in train_cfg:
+        if train_cfg is not None and 't_stride' in train_cfg:
             self.train_t_stride = train_cfg['t_stride']
-        if 't_stride' in test_cfg:
+        if test_cfg is not None and 't_stride' in test_cfg:
             self.test_t_stride = test_cfg['t_stride']
+        self.test_batch = None
+        if test_cfg is not None and 'test_batch' in test_cfg:
+            self.test_batch = test_cfg['test_batch']
+            assert isinstance(self.test_batch, int)
 
         self.init_weights()
 

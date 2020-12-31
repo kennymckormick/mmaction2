@@ -1,5 +1,7 @@
 import math
 
+import torch
+
 from ..registry import RECOGNIZERS
 from .base import BaseRecognizer
 
@@ -60,17 +62,29 @@ class Recognizer3D(BaseRecognizer):
                 new_real_clip_len.extend([real_clip_len[i]] * num_segs)
             real_clip_len = new_real_clip_len
 
-        x = self.extract_feat(imgs)
-        if hasattr(self, 'neck'):
-            x, _ = self.neck(x)
-
-        if dynamic:
-            cls_score = self.cls_head(x, real_clip_len=real_clip_len)
+        if self.test_batch is None:
+            x = self.extract_feat(imgs)
+            if hasattr(self, 'neck'):
+                x, _ = self.neck(x)
+            if dynamic:
+                cls_score = self.cls_head(x, real_clip_len=real_clip_len)
+            else:
+                cls_score = self.cls_head(x)
         else:
-            cls_score = self.cls_head(x)
+            tot = imgs.shape[0]
+            assert num_segs == tot
+            ptr = 0
+            cls_scores = []
+            while ptr < tot:
+                batch_imgs = imgs[ptr:ptr + self.test_batch]
+                x = self.extract_feat(batch_imgs)
+                if hasattr(self, 'neck'):
+                    x, _ = self.neck(x)
+                assert not dynamic, 'For simplicity'
+                cls_scores.append(self.cls_head(x))
+            cls_score = torch.cat(cls_scores)
 
         cls_score = self.average_clip(cls_score, num_segs)
-
         return cls_score.cpu().numpy()
 
     def forward_dummy(self, imgs):
