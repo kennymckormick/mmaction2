@@ -82,6 +82,7 @@ class Recognizer3D(BaseRecognizer):
                     x, _ = self.neck(x)
                 assert not dynamic, 'For simplicity'
                 cls_scores.append(self.cls_head(x))
+                ptr += self.test_batch
             cls_score = torch.cat(cls_scores)
 
         cls_score = self.average_clip(cls_score, num_segs)
