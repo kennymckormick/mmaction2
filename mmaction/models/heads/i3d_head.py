@@ -6,6 +6,30 @@ from ..registry import HEADS
 from .base import BaseHead
 
 
+class PPool(nn.Module):
+    """Pyramid Pooling for 3D feature, input: N x C x T x H x W, output: N x
+    C'.
+
+    Args:
+        spatial_type (str): Pooling type in spatial dimension. Default: 'avg'.
+        sizes (list[int]): Pooled feature sizes.
+    """
+
+    def __init__(self, spatial_type='avg', sizes=[1]):
+        super().__init__()
+        if spatial_type == 'avg':
+            self.pools = [nn.AdaptiveAvgPool3d(s) for s in sizes]
+        elif spatial_type == 'max':
+            self.pools = [nn.AdaptiveMaxPool3d(s) for s in sizes]
+        self.pools = nn.ModuleList(self.pools)
+
+    def forward(self, x):
+        features = [pool(x) for pool in self.pools]
+        features = [feat.view(feat.shape[0], -1) for feat in features]
+        feature = torch.cat(features, dim=1)
+        return feature
+
+
 @HEADS.register_module()
 class I3DHead(BaseHead):
     """Classification head for I3D.
@@ -29,6 +53,7 @@ class I3DHead(BaseHead):
                  spatial_type='avg',
                  dropout_ratio=0.5,
                  init_std=0.01,
+                 sizes=None,
                  **kwargs):
         super().__init__(num_classes, in_channels, loss_cls, **kwargs)
 
@@ -40,12 +65,15 @@ class I3DHead(BaseHead):
         else:
             self.dropout = None
         self.fc_cls = nn.Linear(self.in_channels, self.num_classes)
+        self.sizes = sizes
 
-        if self.spatial_type == 'avg':
-            # use `nn.AdaptiveAvgPool3d` to adaptively match the in_channels.
-            self.avg_pool = nn.AdaptiveAvgPool3d((1, 1, 1))
-        else:
-            self.avg_pool = None
+        self.pool = None
+        if self.sizes is not None:
+            self.pool = PPool(self.spatial_type, self.sizes)
+        elif self.spatial_type == 'avg':
+            self.pool = nn.AdaptiveAvgPool3d(1)
+        elif self.spatial_type == 'max':
+            self.pool = nn.AdaptiveMaxPool3d(1)
 
     def init_weights(self):
         """Initiate the parameters from scratch."""
@@ -67,10 +95,10 @@ class I3DHead(BaseHead):
             assert x.shape[0] == len(real_clip_len)
             for i in range(x.shape[0]):
                 clip_len = real_clip_len[i]
-                ret.append(self.avg_pool(x[i:i + 1, :, :clip_len]))
+                ret.append(self.pool(x[i:i + 1, :, :clip_len]))
             x = torch.cat(ret)
         else:
-            x = self.avg_pool(x)
+            x = self.pool(x)
         # [N, in_channels, 1, 1, 1]
         if self.dropout is not None:
             x = self.dropout(x)
