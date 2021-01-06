@@ -139,6 +139,8 @@ class ResNet3dPathway(ResNet3d):
                                             int) else (inflate, ) * blocks
         non_local = non_local if not isinstance(
             non_local, int) else (non_local, ) * blocks
+        dilation = dilation if not isinstance(dilation,
+                                              int) else (dilation, ) * blocks
         assert len(inflate) == blocks and len(non_local) == blocks
         if self.lateral:
             lateral_inplanes = inplanes * 2 // self.channel_ratio
@@ -165,7 +167,7 @@ class ResNet3dPathway(ResNet3d):
                 planes,
                 spatial_stride,
                 temporal_stride,
-                dilation,
+                dilation[0],
                 downsample,
                 style=style,
                 inflate=(inflate[0] == 1),
@@ -188,7 +190,7 @@ class ResNet3dPathway(ResNet3d):
                     planes,
                     1,
                     1,
-                    dilation,
+                    dilation[i],
                     style=style,
                     inflate=(inflate[i] == 1),
                     inflate_style=inflate_style,
