@@ -453,6 +453,8 @@ class ResNet3d(nn.Module):
                  conv1_stride_t=1,
                  pool1_stride_s=2,
                  pool1_stride_t=1,
+                 advanced_stem=False,
+                 advanced_design=False,
                  lw_dropout=0,
                  sw_dropout=0,
                  with_pool1=True,
@@ -488,6 +490,10 @@ class ResNet3d(nn.Module):
         self.temporal_strides = temporal_strides
         self.se = se
         self.dilations = dilations
+
+        self.advanced_stem = advanced_stem
+        self.advanced_design = advanced_design
+
         assert len(spatial_strides) == len(temporal_strides) == len(
             dilations) == num_stages
 
@@ -525,7 +531,18 @@ class ResNet3d(nn.Module):
 
         self.non_local_cfg = non_local_cfg
 
-        self._make_stem_layer()
+        if not self.advanced_stem:
+            self._make_stem_layer()
+        else:
+            self._make_advanced_stem_layer()
+
+        self.maxpool = nn.MaxPool3d(
+            kernel_size=(1, 3, 3),
+            stride=(self.pool1_stride_t, self.pool1_stride_s,
+                    self.pool1_stride_s),
+            padding=(0, 1, 1))
+
+        self.pool2 = nn.MaxPool3d(kernel_size=(2, 1, 1), stride=(2, 1, 1))
 
         self.res_layers = []
         for i, num_blocks in enumerate(self.stage_blocks):
@@ -549,6 +566,7 @@ class ResNet3d(nn.Module):
                 act_cfg=self.act_cfg,
                 non_local=self.non_local_stages[i],
                 non_local_cfg=self.non_local_cfg,
+                advanced_design=self.advanced_design,
                 inflate=self.stage_inflations[i],
                 inflate_style=self.inflate_style,
                 with_cp=with_cp,
@@ -577,6 +595,7 @@ class ResNet3d(nn.Module):
                        inflate_style='3x1x1',
                        non_local=0,
                        non_local_cfg=dict(),
+                       advanced_design=False,
                        norm_cfg=None,
                        act_cfg=None,
                        conv_cfg=None,
@@ -629,16 +648,31 @@ class ResNet3d(nn.Module):
                                               int) else (dilation, ) * blocks
         assert len(inflate) == blocks and len(non_local) == blocks
         downsample = None
+        stride = (temporal_stride, spatial_stride, spatial_stride)
         if spatial_stride != 1 or inplanes != planes * block.expansion:
-            downsample = ConvModule(
-                inplanes,
-                planes * block.expansion,
-                kernel_size=1,
-                stride=(temporal_stride, spatial_stride, spatial_stride),
-                bias=False,
-                conv_cfg=conv_cfg,
-                norm_cfg=norm_cfg,
-                act_cfg=None)
+            if advanced_design:
+                conv = ConvModule(
+                    inplanes,
+                    planes * block.expansion,
+                    kernel_size=1,
+                    stride=1,
+                    bias=False,
+                    conv_cfg=conv_cfg,
+                    norm_cfg=norm_cfg,
+                    act_cfg=None)
+                pool = nn.AvgPool3d(
+                    kernel_size=stride, stride=stride, padding=0)
+                downsample = nn.Sequential([conv, pool])
+            else:
+                downsample = ConvModule(
+                    inplanes,
+                    planes * block.expansion,
+                    kernel_size=1,
+                    stride=stride,
+                    bias=False,
+                    conv_cfg=conv_cfg,
+                    norm_cfg=norm_cfg,
+                    act_cfg=None)
 
         layers = []
         layers.append(
@@ -822,13 +856,48 @@ class ResNet3d(nn.Module):
             norm_cfg=self.norm_cfg,
             act_cfg=self.act_cfg)
 
-        self.maxpool = nn.MaxPool3d(
-            kernel_size=(1, 3, 3),
-            stride=(self.pool1_stride_t, self.pool1_stride_s,
-                    self.pool1_stride_s),
-            padding=(0, 1, 1))
-
-        self.pool2 = nn.MaxPool3d(kernel_size=(2, 1, 1), stride=(2, 1, 1))
+    def _make_advanced_stem_layer(self):
+        logger = get_root_logger()
+        logger.warning('Using advanced stem layer: \n'
+                       'Conv1: Kernel (1, 3, 3), Stride (conv1_stride_t, '
+                       'conv1_stride_s, conv1_stride_s)\n'
+                       'Conv2: Kernel (1, 3, 3), Stride (1, 1, 1)\n'
+                       'Conv3: Kernel (1, 3, 3), Stride (1, 1, 1)\n'
+                       'And conv1_kernel_s is not used.')
+        conv1_kernel_t = self.conv1_kernel[0]
+        t_kernel = [1 + 2 * (conv1_kernel_t >= (3 + 2 * i)) for i in range(3)]
+        t_padding = [1 * (conv1_kernel_t >= (3 + 2 * i)) for i in range(3)]
+        self.conv1 = ConvModule(
+            self.in_channels,
+            self.base_channels,
+            kernel_size=(t_kernel[0], 3, 3),
+            stride=(self.conv1_stride_t, self.conv1_stride_s,
+                    self.conv1_stride_s),
+            padding=(t_padding[0], 1, 1),
+            bias=False,
+            conv_cfg=self.conv_cfg,
+            norm_cfg=self.norm_cfg,
+            act_cfg=self.act_cfg)
+        self.conv2 = ConvModule(
+            self.base_channels,
+            self.base_channels,
+            kernel_size=(t_kernel[1], 3, 3),
+            stride=(1, 1, 1),
+            padding=(t_padding[1], 1, 1),
+            bias=False,
+            conv_cfg=self.conv_cfg,
+            norm_cfg=self.norm_cfg,
+            act_cfg=self.act_cfg)
+        self.conv3 = ConvModule(
+            self.base_channels,
+            self.base_channels,
+            kernel_size=(t_kernel[2], 3, 3),
+            stride=(1, 1, 1),
+            padding=(t_padding[2], 1, 1),
+            bias=False,
+            conv_cfg=self.conv_cfg,
+            norm_cfg=self.norm_cfg,
+            act_cfg=self.act_cfg)
 
     def _freeze_stages(self):
         """Prevent all the parameters from being optimized before
@@ -886,7 +955,10 @@ class ResNet3d(nn.Module):
             torch.Tensor: The feature of the input
             samples extracted by the backbone.
         """
-        x = self.conv1(x)
+        if self.advanced_stem:
+            x = self.conv3(self.conv2(self.conv1(x)))
+        else:
+            x = self.conv1(x)
         if self.with_pool1:
             x = self.maxpool(x)
         outs = []

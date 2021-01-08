@@ -92,6 +92,7 @@ class ResNet3dPathway(ResNet3d):
                        inflate_style='3x1x1',
                        non_local=0,
                        non_local_cfg=dict(),
+                       advanced_design=False,
                        conv_cfg=None,
                        norm_cfg=None,
                        act_cfg=None,
@@ -146,17 +147,33 @@ class ResNet3dPathway(ResNet3d):
             lateral_inplanes = inplanes * 2 // self.channel_ratio
         else:
             lateral_inplanes = 0
+
+        stride = (temporal_stride, spatial_stride, spatial_stride)
         if (spatial_stride != 1
                 or (inplanes + lateral_inplanes) != planes * block.expansion):
-            downsample = ConvModule(
-                inplanes + lateral_inplanes,
-                planes * block.expansion,
-                kernel_size=1,
-                stride=(temporal_stride, spatial_stride, spatial_stride),
-                bias=False,
-                conv_cfg=conv_cfg,
-                norm_cfg=norm_cfg,
-                act_cfg=None)
+            if advanced_design:
+                conv = ConvModule(
+                    inplanes + lateral_inplanes,
+                    planes * block.expansion,
+                    kernel_size=1,
+                    stride=1,
+                    bias=False,
+                    conv_cfg=conv_cfg,
+                    norm_cfg=norm_cfg,
+                    act_cfg=None)
+                pool = nn.AvgPool3d(
+                    kernel_size=stride, stride=stride, padding=0)
+                downsample = nn.Sequential([conv, pool])
+            else:
+                downsample = ConvModule(
+                    inplanes + lateral_inplanes,
+                    planes * block.expansion,
+                    kernel_size=1,
+                    stride=stride,
+                    bias=False,
+                    conv_cfg=conv_cfg,
+                    norm_cfg=norm_cfg,
+                    act_cfg=None)
         else:
             downsample = None
 
