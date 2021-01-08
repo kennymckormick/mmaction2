@@ -80,6 +80,7 @@ class BasicBlock3d(nn.Module):
                  planes,
                  spatial_stride=1,
                  temporal_stride=1,
+                 temporal_kernel=3,
                  dilation=1,
                  downsample=None,
                  style='pytorch',
@@ -93,6 +94,8 @@ class BasicBlock3d(nn.Module):
                  with_cp=False,
                  se=None):
         super().__init__()
+        logger = get_root_logger()
+        logger.warning('Arg temporal_kernel is not used in BasicBlock3d')
         assert style in ['pytorch', 'caffe']
         assert inflate_style in ['3x1x1', '3x3x3']
 
@@ -231,6 +234,7 @@ class Bottleneck3d(nn.Module):
                  planes,
                  spatial_stride=1,
                  temporal_stride=1,
+                 temporal_kernel=3,
                  dilation=1,
                  downsample=None,
                  style='pytorch',
@@ -276,15 +280,15 @@ class Bottleneck3d(nn.Module):
 
         if self.inflate:
             if inflate_style == '3x1x1':
-                conv1_kernel_size = (3, 1, 1)
-                conv1_padding = (1, 0, 0)
+                conv1_kernel_size = (temporal_kernel, 1, 1)
+                conv1_padding = (temporal_kernel // 2, 0, 0)
                 conv2_kernel_size = (1, 3, 3)
                 conv2_padding = (0, dilation, dilation)
             else:
                 conv1_kernel_size = (1, 1, 1)
                 conv1_padding = (0, 0, 0)
-                conv2_kernel_size = (3, 3, 3)
-                conv2_padding = (1, dilation, dilation)
+                conv2_kernel_size = (temporal_kernel, 3, 3)
+                conv2_padding = (temporal_kernel // 2, dilation, dilation)
         else:
             conv1_kernel_size = (1, 1, 1)
             conv1_padding = (0, 0, 0)
@@ -453,6 +457,7 @@ class ResNet3d(nn.Module):
                  conv1_stride_t=1,
                  pool1_stride_s=2,
                  pool1_stride_t=1,
+                 temporal_kernel=3,
                  advanced_stem=False,
                  advanced_design=False,
                  lw_dropout=0,
@@ -505,6 +510,7 @@ class ResNet3d(nn.Module):
         self.conv1_stride_t = conv1_stride_t
         self.pool1_stride_s = pool1_stride_s
         self.pool1_stride_t = pool1_stride_t
+        self.temporal_kernel = temporal_kernel
 
         self.lw_dropout = lw_dropout
         self.sw_dropout = sw_dropout
@@ -557,6 +563,7 @@ class ResNet3d(nn.Module):
                 num_blocks,
                 spatial_stride=spatial_stride,
                 temporal_stride=temporal_stride,
+                temporal_kernel=temporal_kernel,
                 lw_dropout=lw_dropout,
                 sw_dropout=sw_dropout,
                 dilation=dilation,
@@ -587,6 +594,7 @@ class ResNet3d(nn.Module):
                        blocks,
                        spatial_stride=1,
                        temporal_stride=1,
+                       temporal_kernel=3,
                        lw_dropout=0,
                        sw_dropout=0,
                        dilation=1,
@@ -681,6 +689,7 @@ class ResNet3d(nn.Module):
                 planes,
                 spatial_stride=spatial_stride,
                 temporal_stride=temporal_stride,
+                temporal_kernel=temporal_kernel,
                 dilation=dilation[0],
                 downsample=downsample,
                 style=style,
@@ -704,6 +713,7 @@ class ResNet3d(nn.Module):
                     planes,
                     spatial_stride=1,
                     temporal_stride=1,
+                    temporal_kernel=temporal_kernel,
                     dilation=dilation[i],
                     style=style,
                     inflate=(inflate[i] == 1),
