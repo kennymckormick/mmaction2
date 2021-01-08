@@ -670,7 +670,7 @@ class ResNet3d(nn.Module):
                     act_cfg=None)
                 pool = nn.AvgPool3d(
                     kernel_size=stride, stride=stride, padding=0)
-                downsample = nn.Sequential([conv, pool])
+                downsample = nn.Sequential(conv, pool)
             else:
                 downsample = ConvModule(
                     inplanes,
