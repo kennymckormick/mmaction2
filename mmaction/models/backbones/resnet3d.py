@@ -669,7 +669,7 @@ class ResNet3d(nn.Module):
                     norm_cfg=norm_cfg,
                     act_cfg=None)
                 pool = nn.AvgPool3d(
-                    kernel_size=stride, stride=stride, padding=0)
+                    kernel_size=stride, stride=stride, ceil_mode=True)
                 downsample = nn.Sequential(conv, pool)
             else:
                 downsample = ConvModule(
