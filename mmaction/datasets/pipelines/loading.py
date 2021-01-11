@@ -1527,10 +1527,14 @@ class ConvertCompactHeatmap:
                     # [x, y, w, h]
                     # print(new_compact_heatmap)
                     heatmap, box = new_compact_heatmap[k]
+                    if not (heatmap.shape[0] and heatmap.shape[1]):
+                        continue
                     heatmap = heatmap.astype(np.float32)
                     # print(len(heatmap))
                     # print(heatmap.shape, box.shape)
                     box = [int(x + 0.5) for x in box]
+                    if not (box[2] and box[3]):
+                        continue
                     heatmap = cv2.resize(heatmap, (box[2], box[3]))
                     x_offset, y_offset = max(0, -box[0]), max(0, -box[1])
                     st_x, st_y = box[0] + x_offset, box[1] + y_offset
