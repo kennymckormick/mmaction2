@@ -1066,7 +1066,7 @@ class Normalize(object):
     def __call__(self, results):
         modality = results['modality']
 
-        if modality == 'RGB' or modality == 'RGBFlow':
+        if modality in ['RGB', 'RGBFlow', 'PoTion', 'Heatmap']:
             n = len(results['imgs'])
             h, w, c = results['imgs'][0].shape
             imgs = np.empty((n, h, w, c), dtype=np.float32)
