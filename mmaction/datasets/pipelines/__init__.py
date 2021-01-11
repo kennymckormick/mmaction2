@@ -1,9 +1,9 @@
 from .augmentations import (CenterCrop, ColorJitter, Flip, Fuse,
-                            MultiGroupCrop, MultiScaleCrop, Normalize,
-                            PoseCompact, PoseFlip, PoseMultiScaleCrop,
-                            PoseRandomResizedCrop, PoseResize, RandomCrop,
-                            RandomRescale, RandomResizedCrop, Resize, TenCrop,
-                            ThreeCrop)
+                            HeatmapFlipTest, MultiGroupCrop, MultiScaleCrop,
+                            Normalize, PoseCompact, PoseFlip,
+                            PoseMultiScaleCrop, PoseRandomResizedCrop,
+                            PoseResize, RandomCrop, RandomRescale,
+                            RandomResizedCrop, Resize, TenCrop, ThreeCrop)
 from .compose import Compose
 from .formating import (Collect, FormatShape, ImageToTensor, ToDataContainer,
                         ToTensor, Transpose)
@@ -30,5 +30,5 @@ __all__ = [
     'PoseRandomResizedCrop', 'PoseMultiScaleCrop', 'PoseResize', 'PoseFlip',
     'GeneratePoseTarget', 'PoseDecode', 'LoadKineticsPose', 'PoseCompact',
     'RandomRescale', 'Heatmap2Potion', 'UniformSampleFrames', 'PoTionDecode',
-    'ConvertCompactHeatmap'
+    'ConvertCompactHeatmap', 'HeatmapFlipTest'
 ]

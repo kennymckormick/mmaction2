@@ -957,6 +957,21 @@ class Flip(object):
 
 
 @PIPELINES.register_module()
+class HeatmapFlipTest:
+
+    def __init__(self, left=[], right=[]):
+        self.left = left
+        self.right = right
+
+    def __call__(self, results):
+        results_ = cp.deepcopy(results)
+        flip = Flip(flip_ratio=1, left=self.left, right=self.right)
+        results_ = flip(results)
+        results['imgs'] = np.concatenate([results['imgs'], results_['imgs']])
+        return results
+
+
+@PIPELINES.register_module()
 class PoseFlip(Flip):
 
     def __call__(self, results):
