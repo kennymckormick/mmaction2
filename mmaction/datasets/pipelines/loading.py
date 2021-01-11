@@ -1097,9 +1097,24 @@ class PoseDecode(object):
                 x[frame_inds].astype(np.float32) for x in results['kpscore']
             ]
 
-        results['kp'] = [
-            x[frame_inds].astype(np.float32) for x in results['kp']
-        ]
+        if 'kp' in results:
+            assert results['num_person'] == len(results['kp'])
+            results['kp'] = [
+                x[frame_inds].astype(np.float32) for x in results['kp']
+            ]
+
+        if 'pose_box' in results:
+            assert results['num_person'] == len(results['pose_box'])
+            results['pose_box'] = [
+                x[frame_inds].astype(np.float32) for x in results['pose_box']
+            ]
+
+        if 'compact_heatmap' in results:
+            assert results['num_person'] == len(results['compact_heatmap'])
+            results['compact_heatmap'] = [
+                x[frame_inds].astype(np.float32)
+                for x in results['compact_heatmap']
+            ]
 
         return results
 
