@@ -5,6 +5,7 @@ import pickle
 import shutil
 import warnings
 
+import cv2
 import mmcv
 import numpy as np
 from mmcv.fileio import FileClient
@@ -1081,8 +1082,6 @@ class PoseDecode(object):
         offset = results.get('offset', 0)
         frame_inds = results['frame_inds'] + offset
 
-        assert results['num_person'] == len(results['kp'])
-
         if 'per_frame_box' in results:
             assert results['num_person'] == len(results['per_frame_box'])
             # the three items are lists
@@ -1111,10 +1110,8 @@ class PoseDecode(object):
 
         if 'compact_heatmap' in results:
             assert results['num_person'] == len(results['compact_heatmap'])
-            results['compact_heatmap'] = [
-                x[frame_inds].astype(np.float32)
-                for x in results['compact_heatmap']
-            ]
+            results['compact_heatmap'] = [[x[ind] for ind in frame_inds]
+                                          for x in results['compact_heatmap']]
 
         return results
 
@@ -1447,4 +1444,185 @@ class LoadProposals(object):
         results['tmax_score'] = tmax_score
         results['reference_temporal_iou'] = reference_temporal_iou
 
+        return results
+
+
+class ConvertCompactHeatmap:
+
+    def __init__(self,
+                 shortedge=100,
+                 compact=False,
+                 padding=1. / 4,
+                 hw_ratio=None):
+        # The compact operation should be conducted by group
+        self.shortedge = shortedge
+        self.compact = compact
+        self.padding = padding
+        if isinstance(hw_ratio, float):
+            hw_ratio = (hw_ratio, hw_ratio)
+        # We allow imgpad always
+        self.hw_ratio = hw_ratio
+        # This threshold (eps) is decided when we generate heatmaps
+        # If active area is too small, we do not do copmact op
+        self.eps = 3e-3
+        self.threshold = 10
+
+    def _convert_pose_box(self, compact_heatmap, pose_box):
+        new_compact_heatmap = []
+        for item in compact_heatmap:
+            heatmap, pos = item[0], item[1]
+            h, w = heatmap.shape
+            # [x, y, w, h]
+            quadruple = [
+                pos[0] / pos[2], pos[1] / pos[3], w / pos[2], h / pos[3]
+            ]
+            this_pose_box = [
+                pose_box[0] + quadruple[0] * pose_box[2],
+                pose_box[1] + quadruple[1] * pose_box[3],
+                pose_box[2] * quadruple[2], pose_box[3] * quadruple[3]
+            ]
+            new_compact_heatmap.append((heatmap, this_pose_box))
+            # print(heatmap.shape)
+        return new_compact_heatmap
+
+    def __call__(self, results):
+        img_shape = results['img_shape']
+        old_se = min(img_shape)
+        scale_factor = self.shortedge / old_se
+
+        new_h, new_w = int(img_shape[0] * scale_factor), int(img_shape[1] *
+                                                             scale_factor)
+        new_shape = (new_h, new_w)
+
+        results['img_shape'] = new_shape
+        # May have multiple lists here
+        results['pose_box'] = [scale_factor * x for x in results['pose_box']]
+        results['per_frame_box'] = [
+            scale_factor * x for x in results['per_frame_box']
+        ]
+
+        new_heatmaps = []
+        num_frame = results['pose_box'][0].shape[0]
+        num_joints = len(results['compact_heatmap'][0][0])
+        for i in range(num_frame):
+            new_heatmaps.append(
+                np.zeros([new_h, new_w, num_joints], dtype=np.float32))
+
+        for i in range(results['num_person']):
+            compact_heatmap = results['compact_heatmap'][i]
+            pose_box = results['pose_box'][i]
+
+            for j in range(num_frame):
+                heatmap, box = compact_heatmap[j], pose_box[j]
+                num_joints = len(heatmap)
+                # print(num_joints)
+                new_compact_heatmap = self._convert_pose_box(heatmap, box)
+                new_heatmap = new_heatmaps[j]
+                # print(len(new_compact_heatmap))
+                # We use a corase mapping here
+                for k in range(num_joints):
+                    # [x, y, w, h]
+                    # print(new_compact_heatmap)
+                    heatmap, box = new_compact_heatmap[k]
+                    heatmap = heatmap.astype(np.float32)
+                    # print(len(heatmap))
+                    # print(heatmap.shape, box.shape)
+                    box = [int(x + 0.5) for x in box]
+                    heatmap = cv2.resize(heatmap, (box[2], box[3]))
+                    x_offset, y_offset = max(0, -box[0]), max(0, -box[1])
+                    st_x, st_y = box[0] + x_offset, box[1] + y_offset
+                    ed_x, ed_y = min(box[0] + box[2],
+                                     new_w), min(box[1] + box[3], new_h)
+                    box_width = ed_x - st_x
+                    box_height = ed_y - st_y
+                    if box_width <= 0 or box_height <= 0:
+                        continue
+                    patch = heatmap[y_offset:y_offset + box_height,
+                                    x_offset:x_offset + box_width]
+                    # print(np.max(patch), st_y, ed_y, st_x, ed_x)
+                    original_patch = new_heatmap[st_y:ed_y, st_x:ed_x, k]
+
+                    original_patch[:] = np.maximum(original_patch, patch)
+        heatmaps = new_heatmaps
+        # print(self.compact)
+        # Now that we get heatmaps, We can make them compact if needed,
+        # note that it will be conducted by group
+        if self.compact:
+            # print('called')
+            clip_len = results['clip_len']
+
+            assert len(new_heatmaps) % clip_len == 0
+            num_clips = len(new_heatmaps) // clip_len
+            for i in range(num_clips):
+                # Do not use per_frame_box
+                st_frame, ed_frame = i * clip_len, (i + 1) * clip_len
+                min_x, min_y, max_x, max_y = new_w - 1, new_h - 1, 0, 0
+                for f_idx in range(st_frame, ed_frame):
+                    # find th e
+                    for x in range(min_x):
+                        if np.any(heatmaps[f_idx][:, x] > self.eps):
+                            min_x = x
+                            break
+                    for x in range(new_w - 1, max_x, -1):
+                        if np.any(heatmaps[f_idx][:, x] > self.eps):
+                            max_x = x
+                            break
+                    for y in range(min_y):
+                        if np.any(heatmaps[f_idx][y] > self.eps):
+                            min_y = y
+                            break
+                    for y in range(new_h - 1, max_y, -1):
+                        if np.any(heatmaps[f_idx][y] > self.eps):
+                            max_y = y
+                            break
+                if (max_x - min_x < self.threshold) or (max_y - min_y <
+                                                        self.threshold):
+                    continue
+                center = (int((min_x + max_x) / 2), int((min_y + max_y) / 2))
+                box_hwidth = (max_x - min_x) / 2 * (1 + self.padding)
+                box_hheight = (max_y - min_y) / 2 * (1 + self.padding)
+                if self.hw_ratio is not None:
+                    box_hheight = max(self.hw_ratio[0] * box_hwidth,
+                                      box_hheight)
+                    box_hwidth = max(1 / self.hw_ratio[1] * box_hheight,
+                                     box_hwidth)
+                st_x, ed_x = center[0] - box_hwidth, center[0] + box_hwidth
+                st_y, ed_y = center[1] - box_hheight, center[1] + box_hheight
+                st_x, ed_x, st_y, ed_y = [
+                    int(x) for x in [st_x, ed_x, st_y, ed_y]
+                ]
+
+                pad_left = 0 if st_x >= 0 else -st_x
+                pad_right = 0 if ed_x <= new_w else ed_x - new_w
+                pad_top = 0 if st_y >= 0 else -st_y
+                pad_bottom = 0 if ed_y <= new_h else ed_y - new_h
+
+                if st_x < 0:
+                    ed_x -= st_x
+                    st_x = 0
+                if st_y < 0:
+                    ed_y -= st_y
+                    st_y = 0
+
+                cropped_shape = (ed_y - st_y, ed_x - st_x)
+                old_se = min(cropped_shape)
+                scale_factor = self.shortedge / old_se
+                new_h, new_w = int(cropped_shape[0] *
+                                   scale_factor), int(cropped_shape[1] *
+                                                      scale_factor)
+                new_shape = (new_h, new_w)
+
+                for f_idx in range(st_frame, ed_frame):
+                    frame = heatmaps[f_idx]
+                    frame = np.pad(
+                        frame,
+                        ((pad_top, pad_bottom), (pad_left, pad_right), (0, 0)),
+                        'constant',
+                        constant_values=0)
+                    frame = frame[st_y:ed_y, st_x:ed_x]
+                    frame = cv2.resize(frame, (new_w, new_h))
+                    heatmaps[f_idx] = frame
+
+        results['heatmap'] = heatmaps
+        results['modality'] = 'Heatmap'
         return results
