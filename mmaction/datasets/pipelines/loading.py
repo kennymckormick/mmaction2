@@ -1626,7 +1626,7 @@ class ConvertCompactHeatmap:
                     frame = cv2.resize(frame, (new_w, new_h))
                     heatmaps[f_idx] = frame
 
-        results['heatmap'] = heatmaps
+        results['imgs'] = heatmaps
         results['modality'] = 'Heatmap'
         return results
 

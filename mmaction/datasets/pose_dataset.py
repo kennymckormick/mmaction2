@@ -64,6 +64,8 @@ class PoseDataset(BaseDataset):
     def prepare_train_frames(self, idx):
         """Prepare the frames for training given the index."""
         results = copy.deepcopy(self.video_infos[idx])
+        if 'filename' in results:
+            results.update(mmcv.load(results['filename']))
         results['modality'] = self.modality
         results['start_index'] = self.start_index
         return self.pipeline(results)
@@ -71,6 +73,8 @@ class PoseDataset(BaseDataset):
     def prepare_test_frames(self, idx):
         """Prepare the frames for testing given the index."""
         results = copy.deepcopy(self.video_infos[idx])
+        if 'filename' in results:
+            results.update(mmcv.load(results['filename']))
         results['modality'] = self.modality
         results['start_index'] = self.start_index
         return self.pipeline(results)
