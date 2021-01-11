@@ -927,13 +927,18 @@ class Flip(object):
                         imgs[i][..., 3] = mmcv.iminvert(imgs[i][..., 3])
                 elif modality == 'PoTion':
                     assert lt == 1
-                    img = imgs[0]
-                    npair = len(self.left)
-                    for i in range(npair):
-                        left, right = self.left[i], self.right[i]
-                        tmp = cp.deepcopy(img[..., left])
-                        img[..., left] = img[..., right]
-                        img[..., right] = tmp
+                    new_order = list(range(imgs[0].shape[-1]))
+                    for left, right in zip(self.left, self.right):
+                        new_order[left] = right
+                        new_order[right] = left
+                    results['imgs'] = [img[..., new_order] for img in imgs]
+                elif modality == 'Heatmap':
+                    new_order = list(range(imgs[0].shape[-1]))
+                    for left, right in zip(self.left, self.right):
+                        new_order[left] = right
+                        new_order[right] = left
+                    results['imgs'] = [img[..., new_order] for img in imgs]
+
         else:
             lazyop = results['lazy']
             if lazyop['flip']:
@@ -976,14 +981,14 @@ class PoseFlip(Flip):
                 item[:, :, 0] = img_width - item[:, :, 0]
                 if 'kpscore' in results:
                     kpscore = results['kpscore'][ind]
-                for left_ind, right_ind in zip(self.left, self.right):
-                    tmp = cp.deepcopy(item[:, left_ind])
-                    item[:, left_ind] = item[:, right_ind]
-                    item[:, right_ind] = tmp
-                    if 'kpscore' in results:
-                        tmp = cp.deepcopy(kpscore[:, left_ind])
-                        kpscore[:, left_ind] = kpscore[:, right_ind]
-                        kpscore[:, right_ind] = tmp
+
+                new_order = list(range(item.shape[1]))
+                for left, right in zip(self.left, self.right):
+                    new_order[left] = right
+                    new_order[right] = left
+                item = item[:, new_order]
+                if 'kpscore' in results:
+                    kpscore = kpscore[:, new_order]
 
             if 'per_frame_box' not in results:
                 return results
