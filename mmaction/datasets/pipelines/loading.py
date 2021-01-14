@@ -1065,6 +1065,18 @@ class PoseDecode(object):
     optional.
     """
 
+    def __init__(self,
+                 random_drop=False,
+                 random_seed=1,
+                 drop_per_nframe=16,
+                 drop_njoints=1,
+                 manipulate_joints=[7, 8, 9, 10, 13, 14, 15, 16]):
+        self.random_drop = random_drop
+        self.random_seed = random_seed
+        self.drop_per_nframe = drop_per_nframe
+        self.drop_njoints = drop_njoints
+        self.manipulate_joints = manipulate_joints
+
     def __call__(self, results):
         """Perform the ``RawFrameDecode`` to pick frames given indices.
 
@@ -1074,6 +1086,9 @@ class PoseDecode(object):
         """
         # If no 'frame_inds' in results, set 'frame_inds' as range(num_frames)
         # by default
+        if self.random_drop:
+            np.random.seed(self.random_seed)
+            assert 'kpscore' in results, 'for simplicity'
 
         if 'frame_inds' not in results:
             results['frame_inds'] = np.arange(results['total_frames'])
@@ -1092,8 +1107,23 @@ class PoseDecode(object):
                 x[frame_inds].astype(np.float32)
                 for x in results['per_frame_box']
             ]
+
         if 'kpscore' in results:
             assert results['num_person'] == len(results['kpscore'])
+            if self.random_drop:
+                assert results['num_person'] == 1, 'gym only now'
+                kpscore = results['kpscore'][0]
+                lt = kpscore.shape[0]
+                for tidx in range(lt):
+                    if np.random.random() < 1. / self.drop_per_nframe:
+                        jidxs = np.random.choice(
+                            self.manipulate_joints,
+                            size=self.drop_njoints,
+                            replace=False)
+                        for jidx in jidxs:
+                            kpscore[tidx, jidx] = 0.
+                results['kpscore'][0] = kpscore
+
             results['kpscore'] = [
                 x[frame_inds].astype(np.float32) for x in results['kpscore']
             ]
