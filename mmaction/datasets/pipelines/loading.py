@@ -1,9 +1,7 @@
 import copy as cp
 import io
-import os
 import os.path as osp
 import pickle
-import shutil
 import warnings
 
 import cv2
@@ -12,7 +10,6 @@ import numpy as np
 from mmcv.fileio import FileClient
 from torch.nn.modules.utils import _pair
 
-from ...utils import get_random_string, get_shm_dir, get_thread_id
 from ..registry import PIPELINES
 from .augmentations import PoseFlip
 
@@ -669,110 +666,6 @@ class SampleProposalFrames(SampleFrames):
 
 
 @PIPELINES.register_module()
-class PyAVInit(object):
-    """Using pyav to initialize the video.
-
-    PyAV: https://github.com/mikeboers/PyAV
-
-    Required keys are "filename",
-    added or modified keys are "video_reader", and "total_frames".
-
-    Args:
-        io_backend (str): io backend where frames are store.
-            Default: 'disk'.
-        kwargs (dict): Args for file client.
-    """
-
-    def __init__(self, io_backend='disk', **kwargs):
-        self.io_backend = io_backend
-        self.kwargs = kwargs
-        self.file_client = None
-
-    def __call__(self, results):
-        """Perform the PyAV initiation.
-
-        Args:
-            results (dict): The resulting dict to be modified and passed
-                to the next transform in pipeline.
-        """
-        try:
-            import av
-        except ImportError:
-            raise ImportError('Please run "conda install av -c conda-forge" '
-                              'or "pip install av" to install PyAV first.')
-
-        if self.file_client is None:
-            self.file_client = FileClient(self.io_backend, **self.kwargs)
-
-        file_obj = io.BytesIO(self.file_client.get(results['filename']))
-        container = av.open(file_obj)
-
-        results['video_reader'] = container
-        results['total_frames'] = container.streams.video[0].frames
-
-        return results
-
-
-@PIPELINES.register_module()
-class PyAVDecode(object):
-    """Using pyav to decode the video.
-
-    PyAV: https://github.com/mikeboers/PyAV
-
-    Required keys are "video_reader" and "frame_inds",
-    added or modified keys are "imgs", "img_shape" and "original_shape".
-
-    Args:
-        multi_thread (bool): If set to True, it will apply multi
-            thread processing. Default: False.
-    """
-
-    def __init__(self, multi_thread=False):
-        self.multi_thread = multi_thread
-
-    def __call__(self, results):
-        """Perform the PyAV decoding.
-
-        Args:
-            results (dict): The resulting dict to be modified and passed
-                to the next transform in pipeline.
-        """
-        container = results['video_reader']
-        imgs = list()
-
-        if self.multi_thread:
-            container.streams.video[0].thread_type = 'AUTO'
-        if results['frame_inds'].ndim != 1:
-            results['frame_inds'] = np.squeeze(results['frame_inds'])
-
-        # set max indice to make early stop
-        max_inds = max(results['frame_inds'])
-        i = 0
-        for frame in container.decode(video=0):
-            if i > max_inds + 1:
-                break
-            imgs.append(frame.to_rgb().to_ndarray())
-            i += 1
-
-        results['video_reader'] = None
-        del container
-
-        # the available frame in pyav may be less than its length,
-        # which may raise error
-        results['imgs'] = [imgs[i % len(imgs)] for i in results['frame_inds']]
-
-        results['original_shape'] = imgs[0].shape[:2]
-        results['img_shape'] = imgs[0].shape[:2]
-
-        return results
-
-    def __repr__(self):
-        repr_str = self.__class__.__name__
-        repr_str += f'(multi_thread={self.multi_thread})'
-        return repr_str
-
-
-@PIPELINES.register_module()
 class DecordInit(object):
     """Using decord to initialize the video_reader.
 
@@ -849,99 +742,6 @@ class DecordDecode(object):
         del container
 
         results['imgs'] = imgs
-        results['original_shape'] = imgs[0].shape[:2]
-        results['img_shape'] = imgs[0].shape[:2]
-
-        return results
-
-
-@PIPELINES.register_module()
-class OpenCVInit(object):
-    """Using OpenCV to initalize the video_reader.
-
-    Required keys are "filename", added or modified keys are "new_path",
-    "video_reader" and "total_frames".
-    """
-
-    def __init__(self, io_backend='disk', **kwargs):
-        self.io_backend = io_backend
-        self.kwargs = kwargs
-        self.file_client = None
-        random_string = get_random_string()
-        thread_id = get_thread_id()
-        self.tmp_folder = osp.join(get_shm_dir(),
-                                   f'{random_string}_{thread_id}')
-        os.mkdir(self.tmp_folder)
-
-    def __call__(self, results):
-        """Perform the OpenCV initiation.
-
-        Args:
-            results (dict): The resulting dict to be modified and passed
-                to the next transform in pipeline.
-        """
-        if self.io_backend == 'disk':
-            new_path = results['filename']
-        else:
-            if self.file_client is None:
-                self.file_client = FileClient(self.io_backend, **self.kwargs)
-
-            thread_id = get_thread_id()
-            # save the file of same thread at the same place
-            new_path = osp.join(self.tmp_folder, f'tmp_{thread_id}.mp4')
-            with open(new_path, 'wb') as f:
-                f.write(self.file_client.get(results['filename']))
-
-        container = mmcv.VideoReader(new_path)
-        results['new_path'] = new_path
-        results['video_reader'] = container
-        results['total_frames'] = len(container)
-
-        return results
-
-    def __del__(self):
-        shutil.rmtree(self.tmp_folder)
-
-
-@PIPELINES.register_module()
-class OpenCVDecode(object):
-    """Using OpenCV to decode the video.
-
-    Required keys are "video_reader", "filename" and "frame_inds", added or
-    modified keys are "imgs", "img_shape" and "original_shape".
-    """
-
-    def __init__(self):
-        pass
-
-    def __call__(self, results):
-        """Perform the OpenCV decoding.
-
-        Args:
-            results (dict): The resulting dict to be modified and passed
-                to the next transform in pipeline.
-        """
-        container = results['video_reader']
-        imgs = list()
-
-        if results['frame_inds'].ndim != 1:
-            results['frame_inds'] = np.squeeze(results['frame_inds'])
-
-        for frame_ind in results['frame_inds']:
-            cur_frame = container[frame_ind]
-            # last frame may be None in OpenCV
-            while isinstance(cur_frame, type(None)):
-                frame_ind -= 1
-                cur_frame = container[frame_ind]
-            imgs.append(cur_frame)
-
-        results['video_reader'] = None
-        del container
-
-        imgs = np.array(imgs)
-        # The default channel order of OpenCV is BGR, thus we change it to RGB
-        imgs = imgs[:, :, :, ::-1]
-        results['imgs'] = list(imgs)
         results['original_shape'] = imgs[0].shape[:2]
         results['img_shape'] = imgs[0].shape[:2]
 
@@ -1146,6 +946,28 @@ class PoseDecode(object):
                                           for x in results['compact_heatmap']]
 
         return results
+
+
+@PIPELINES.register_module()
+class LoadFile:
+    """Load a pickle file given filename & update to results."""
+
+    def __init__(self, io_backend='disk', **kwargs):
+        self.io_backend = io_backend
+        self.kwargs = kwargs
+        self.file_client = None
+
+    def __call__(self, results):
+        assert 'filename' in results
+        filename = results.pop('filename')
+
+        if self.file_client is None:
+            self.file_client = FileClient(self.io_backend, **self.kwargs)
+
+        bytes = self.file_client.get(filename)
+        data = pickle.loads(bytes)
+        data.update(results)
+        return data
 
 
 @PIPELINES.register_module()
