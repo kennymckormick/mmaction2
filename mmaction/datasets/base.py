@@ -1,8 +1,10 @@
 import copy
 import os.path as osp
 from abc import ABCMeta, abstractmethod
+from collections import defaultdict
 
 import mmcv
+import numpy as np
 import torch
 from torch.utils.data import Dataset
 
@@ -122,6 +124,24 @@ class BaseDataset(Dataset, metaclass=ABCMeta):
         results['modality'] = self.modality
         results['start_index'] = self.start_index
         return self.pipeline(results)
+
+    def get_label_freq(self):
+        """Get the frequency of each label class."""
+        label_freq = defaultdict(lambda: 0)
+        for item in self.video_infos:
+            label_freq[item['label']] += 1
+        for k in label_freq:
+            label_freq[k] /= len(self)
+        return label_freq
+
+    def get_sample_freq(self, power=1.):
+        label_freq = self.get_label_freq()
+        sample_freq = [
+            label_freq[item['label']]**(power - 1.)
+            for item in self.video_infos
+        ]
+        sample_freq = np.array(sample_freq, dtype=np.float32) / len(self)
+        return sample_freq
 
     def __len__(self):
         """Get the size of the dataset."""

@@ -44,6 +44,12 @@ class PoseDataset(BaseDataset):
         super().__init__(
             ann_file, pipeline, start_index=0, modality='Pose', **kwargs)
 
+        if 'byfreq' in kwargs and kwargs['byfreq']:
+            pass
+
+    def kinetics_freq(self):
+        pass
+
     def load_annotations(self):
         """Load annotation file to get video information."""
         assert self.ann_file.endswith('.pkl')
