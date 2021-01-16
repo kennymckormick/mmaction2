@@ -4,7 +4,6 @@ from abc import ABCMeta, abstractmethod
 from collections import defaultdict
 
 import mmcv
-import numpy as np
 import torch
 from torch.utils.data import Dataset
 
@@ -125,23 +124,22 @@ class BaseDataset(Dataset, metaclass=ABCMeta):
         results['start_index'] = self.start_index
         return self.pipeline(results)
 
-    def get_label_freq(self):
+    # return label_num, label_freq
+    def _label_freq(self, power=1.):
         """Get the frequency of each label class."""
-        label_freq = defaultdict(lambda: 0)
-        for item in self.video_infos:
-            label_freq[item['label']] += 1
-        for k in label_freq:
-            label_freq[k] /= len(self)
-        return label_freq
 
-    def get_sample_freq(self, power=1.):
-        label_freq = self.get_label_freq()
-        sample_freq = [
-            label_freq[item['label']]**(power - 1.)
-            for item in self.video_infos
-        ]
-        sample_freq = np.array(sample_freq, dtype=np.float32) / len(self)
-        return sample_freq
+        label_num = defaultdict(lambda: 0)
+        for item in self.video_infos:
+            label_num[item['label']] += 1
+        label_freq = {}
+        for k in label_num:
+            label_freq[k] = label_num[k] / len(self)  # Norm s.t. sum to 1
+            label_freq[k] = label_freq[k]**power  # apply power
+
+        Z = sum(label_freq.values())
+        for k in label_freq:
+            label_freq[k] /= Z
+        return label_num, label_freq
 
     def __len__(self):
         """Get the size of the dataset."""

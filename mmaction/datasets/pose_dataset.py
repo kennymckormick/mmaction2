@@ -1,7 +1,9 @@
 import copy
 import os.path as osp
+from collections import defaultdict
 
 import mmcv
+import numpy as np
 from mmcv.utils import print_log
 
 from ..core import mean_class_accuracy, top_k_accuracy
@@ -38,6 +40,10 @@ class PoseDataset(BaseDataset):
         ann_file (str): Path to the annotation file.
         pipeline (list[dict | callable]): A sequence of data transforms.
         **kwargs: Keyword arguments for ``BaseDataset``.
+        byfreq (bool): Optional. If set, will set sample_freq for the dataset.
+        power (float): Optional. Power of class frequency. Default: 1.
+        valid_norm_range (tuple[float]): Normalize probability by number of
+            valid frames. Only support linear now.
     """
 
     def __init__(self, ann_file, pipeline, **kwargs):
@@ -45,10 +51,48 @@ class PoseDataset(BaseDataset):
             ann_file, pipeline, start_index=0, modality='Pose', **kwargs)
 
         if 'byfreq' in kwargs and kwargs['byfreq']:
-            pass
+            power = 1.
+            if 'power' in kwargs:
+                power = kwargs['power']
+            label_num, label_freq = self._label_freq(power=power)
+            if 'valid_norm_range' in kwargs:
+                valid_norm_range = kwargs['valid_norm_range']
+                assert mmcv.is_tuple_of(valid_norm_range, float)
+                assert valid_norm_range[0] < valid_norm_range[1]
+                assert valid_norm_range[0] > 0
+                # It will set intra_class_freq for each video in video_infos
+                self.get_intra_class_freq(valid_norm_range)
+                sample_freq = [
+                    label_freq[x['label']] * x['intra_class_freq']
+                    for x in self.video_infos
+                ]
+            else:
+                sample_freq = [
+                    label_freq[x['label']] / label_num[x['label']]
+                    for x in self.video_infos
+                ]
+            self.sample_freq = np.array(sample_freq, dtype=np.float32)
 
-    def kinetics_freq(self):
-        pass
+    def get_intra_class_freq(self, valid_norm_range=(0.7, 1.3)):
+        """Linear Only Now."""
+        bkts = defaultdict(list)
+        for item in self.video_infos:
+            label = item['label']
+            bkts[label].append(item)
+        for k, videos in bkts.items():
+            min_valid = min([x['num_valid'] for x in videos])
+            max_valid = max([x['num_valid'] for x in videos])
+
+            def get_freq(num_valid):
+                pos = (num_valid - min_valid) / (max_valid - min_valid)
+                range_diff = valid_norm_range[1] - valid_norm_range[0]
+                return valid_norm_range[0] + range_diff * pos
+
+            intra_class_freq = [get_freq(x['num_valid']) for x in videos]
+            Z = sum(intra_class_freq)
+            intra_class_freq = [x / Z for x in intra_class_freq]
+            for video, freq in zip(videos, intra_class_freq):
+                video['intra_class_freq'] = freq
 
     def load_annotations(self):
         """Load annotation file to get video information."""
