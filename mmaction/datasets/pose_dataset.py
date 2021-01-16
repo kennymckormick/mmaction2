@@ -7,6 +7,7 @@ import numpy as np
 from mmcv.utils import print_log
 
 from ..core import mean_class_accuracy, top_k_accuracy
+from ..utils import get_root_logger
 from .base import BaseDataset
 from .registry import DATASETS
 
@@ -49,6 +50,27 @@ class PoseDataset(BaseDataset):
     def __init__(self, ann_file, pipeline, **kwargs):
         super().__init__(
             ann_file, pipeline, start_index=0, modality='Pose', **kwargs)
+
+        # Thresholding Training Examples
+        if 'valid_ratio' in kwargs:
+            ratio = kwargs['valid_ratio']
+            assert isinstance(ratio, float)
+            # Perform thresholding
+            self.video_infos = [
+                x for x in self.video_infos
+                if x['num_valid'] / x['num_frame'] >= ratio
+            ]
+
+        if 'valid_frame' in kwargs:
+            valid_frame = kwargs['valid_frame']
+            assert isinstance(valid_frame, int)
+            # Perform thresholding
+            self.video_infos = [
+                x for x in self.video_infos if x['num_valid'] >= valid_frame
+            ]
+
+        logger = get_root_logger()
+        logger.info(f'{len(self)} videos remain after valid thresholding')
 
         if 'byfreq' in kwargs and kwargs['byfreq']:
             power = 1.
