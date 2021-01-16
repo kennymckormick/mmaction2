@@ -48,12 +48,20 @@ class PoseDataset(BaseDataset):
     """
 
     def __init__(self, ann_file, pipeline, **kwargs):
+        additional_args = [
+            'valid_ratio', 'valid_frame', 'byfreq', 'power', 'valid_norm_range'
+        ]
+        add_kwargs = {}
+        for arg in additional_args:
+            if arg in kwargs:
+                add_kwargs[arg] = kwargs.pop(arg)
+
         super().__init__(
             ann_file, pipeline, start_index=0, modality='Pose', **kwargs)
 
         # Thresholding Training Examples
-        if 'valid_ratio' in kwargs:
-            ratio = kwargs['valid_ratio']
+        if 'valid_ratio' in add_kwargs:
+            ratio = add_kwargs['valid_ratio']
             assert isinstance(ratio, float)
             # Perform thresholding
             self.video_infos = [
@@ -61,8 +69,8 @@ class PoseDataset(BaseDataset):
                 if x['num_valid'] / x['num_frame'] >= ratio
             ]
 
-        if 'valid_frame' in kwargs:
-            valid_frame = kwargs['valid_frame']
+        if 'valid_frame' in add_kwargs:
+            valid_frame = add_kwargs['valid_frame']
             assert isinstance(valid_frame, int)
             # Perform thresholding
             self.video_infos = [
@@ -72,13 +80,13 @@ class PoseDataset(BaseDataset):
         logger = get_root_logger()
         logger.info(f'{len(self)} videos remain after valid thresholding')
 
-        if 'byfreq' in kwargs and kwargs['byfreq']:
+        if 'byfreq' in add_kwargs and add_kwargs['byfreq']:
             power = 1.
-            if 'power' in kwargs:
-                power = kwargs['power']
+            if 'power' in add_kwargs:
+                power = add_kwargs['power']
             label_num, label_freq = self._label_freq(power=power)
-            if 'valid_norm_range' in kwargs:
-                valid_norm_range = kwargs['valid_norm_range']
+            if 'valid_norm_range' in add_kwargs:
+                valid_norm_range = add_kwargs['valid_norm_range']
                 assert mmcv.is_tuple_of(valid_norm_range, float)
                 assert valid_norm_range[0] < valid_norm_range[1]
                 assert valid_norm_range[0] > 0
