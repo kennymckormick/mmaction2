@@ -181,6 +181,19 @@ class PoseCompact:
 
 
 @PIPELINES.register_module()
+class Padding:
+
+    def __init__(self, hw_ratio=1., padding=0.):
+        if isinstance(hw_ratio, float):
+            hw_ratio = (hw_ratio, hw_ratio)
+        self.hw_ratio = hw_ratio
+
+    def __call__(self, results):
+        pass
+        # img_shape = results['img_shape']
+
+
+@PIPELINES.register_module()
 class RandomCrop(object):
     """Vanilla square random crop that specifics the output size.
 

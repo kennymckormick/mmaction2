@@ -181,17 +181,11 @@ class SampleFrames(object):
 @PIPELINES.register_module()
 class UniformSampleFrames:
 
-    def __init__(self,
-                 clip_len,
-                 sample_ratio=-1,
-                 num_clips=1,
-                 test_mode=False,
-                 random_seed=255):
+    def __init__(self, clip_len, num_clips=1, test_mode=False, seed=255):
         self.clip_len = clip_len
-        self.sample_ratio = sample_ratio
         self.num_clips = num_clips
         self.test_mode = test_mode
-        self.random_seed = random_seed
+        self.random_seed = seed
 
     def _get_train_clips(self, num_frames, clip_len):
         assert self.num_clips == 1
@@ -216,7 +210,7 @@ class UniformSampleFrames:
         return inds
 
     def _get_test_clips(self, num_frames, clip_len):
-        np.random.seed(self.random_seed)
+        np.random.seed(self.seed)
         if num_frames < clip_len:
             # Then we use a simple strategy
             if num_frames < self.num_clips:
@@ -254,17 +248,11 @@ class UniformSampleFrames:
 
     def __call__(self, results):
         num_frames = results['total_frames']
-        if self.sample_ratio <= 0:
-            clip_len = self.clip_len
-        else:
-            clip_len = int(num_frames / self.sample_ratio)
-            # self.clip_len is the upper bound
-            clip_len = min(clip_len, self.clip_len)
 
         if self.test_mode:
-            inds = self._get_test_clips(num_frames, clip_len)
+            inds = self._get_test_clips(num_frames, self.clip_len)
         else:
-            inds = self._get_train_clips(num_frames, clip_len)
+            inds = self._get_train_clips(num_frames, self.clip_len)
 
         inds = np.mod(inds, num_frames)
         start_index = results['start_index']
@@ -272,15 +260,35 @@ class UniformSampleFrames:
 
         results['frame_inds'] = inds.astype(np.int)
         results['clip_len'] = self.clip_len
-
-        if self.test_mode:
-            results['clip_len'] = clip_len
-        else:
-            if self.sample_ratio > 0:
-                results['real_clip_len'] = clip_len
-
         results['frame_interval'] = None
         results['num_clips'] = self.num_clips
+        return results
+
+
+@PIPELINES.register_module()
+class MMUniformSampleFrames(UniformSampleFrames):
+    # Here, clip_len is a dictionary: key: modality_name, value: clip_len
+    # We assume it is RGB, Pose & start_index is hardcoded
+    # MM is abbrev of multi-modality
+
+    def __call__(self, results):
+        num_frames = results['total_frames']
+        modalities = []
+        for modality, clip_len in self.clip_len.items():
+            if self.test_mode:
+                inds = self._get_test_clips(num_frames, clip_len)
+            else:
+                inds = self._get_train_clips(num_frames, clip_len)
+            inds = np.mod(inds, num_frames)
+            inds = inds + (modality == 'RGB')  # RGB offset 1
+            results[f'{modality}_inds'] = inds.astype(np.int)
+            modalities.append(modality)
+        results['clip_len'] = self.clip_len
+        results['frame_interval'] = None
+        results['num_clips'] = self.num_clips
+        if not isinstance(results['modality'], list):
+            # should override
+            results['modality'] = modalities
         return results
 
 
@@ -294,11 +302,24 @@ class DecordInit(object):
     added or modified keys are "video_reader" and "total_frames".
     """
 
-    def __init__(self, io_backend='disk', num_threads=1, **kwargs):
+    def __init__(self, io_backend='disk', **kwargs):
         self.io_backend = io_backend
-        self.num_threads = num_threads
         self.kwargs = kwargs
         self.file_client = None
+
+    def _get_videoreader(self, filename):
+        if osp.splitext(filename)[0] == filename:
+            filename = filename + '.mp4'
+        try:
+            import decord
+        except ImportError:
+            raise ImportError(
+                'Please run "pip install decord" to install Decord first.')
+        if self.file_client is None:
+            self.file_client = FileClient(self.io_backend, **self.kwargs)
+        file_obj = io.BytesIO(self.file_client.get(filename))
+        container = decord.VideoReader(file_obj, num_threads=1)
+        return container
 
     def __call__(self, results):
         """Perform the Decord initiation.
@@ -307,19 +328,9 @@ class DecordInit(object):
             results (dict): The resulting dict to be modified and passed
                 to the next transform in pipeline.
         """
-        try:
-            import decord
-        except ImportError:
-            raise ImportError(
-                'Please run "pip install decord" to install Decord first.')
 
-        if self.file_client is None:
-            self.file_client = FileClient(self.io_backend, **self.kwargs)
-
-        file_obj = io.BytesIO(self.file_client.get(results['filename']))
-        container = decord.VideoReader(file_obj, num_threads=self.num_threads)
-        results['video_reader'] = container
-        results['total_frames'] = len(container)
+        results['video_reader'] = self._get_videoreader(results['filename'])
+        results['total_frames'] = len(results['video_reader'])
         return results
 
 
@@ -336,6 +347,11 @@ class DecordDecode(object):
     def __init__(self, **kwargs):
         pass
 
+    def _decord_load_frames(self, container, inds):
+        frame_dict = {idx: container[idx].asnumpy() for idx in np.unique(inds)}
+        imgs = [frame_dict[idx] for idx in inds]
+        return imgs
+
     def __call__(self, results):
         """Perform the Decord decoding.
 
@@ -350,12 +366,7 @@ class DecordDecode(object):
 
         frame_inds = results['frame_inds']
         # Generate frame index mapping in order
-        frame_dict = {
-            idx: container[idx].asnumpy()
-            for idx in np.unique(frame_inds)
-        }
-
-        imgs = [frame_dict[idx] for idx in frame_inds]
+        imgs = self._decord_load_frames(container, frame_inds)
 
         results['video_reader'] = None
         del container
@@ -376,16 +387,16 @@ class RawFrameDecode(object):
 
     Args:
         io_backend (str): IO backend where frames are stored. Default: 'disk'.
-        decoding_backend (str): Backend used for image decoding.
-            Default: 'cv2'.
         kwargs (dict, optional): Arguments for FileClient.
     """
 
-    def __init__(self, io_backend='disk', decoding_backend='cv2', **kwargs):
+    def __init__(self, io_backend='disk', **kwargs):
         self.io_backend = io_backend
-        self.decoding_backend = decoding_backend
         self.kwargs = kwargs
         self.file_client = None
+
+    def _load_frames(self, result):
+        pass
 
     def __call__(self, results):
         """Perform the ``RawFrameDecode`` to pick frames given indices.
@@ -394,7 +405,7 @@ class RawFrameDecode(object):
             results (dict): The resulting dict to be modified and passed
                 to the next transform in pipeline.
         """
-        mmcv.use_backend(self.decoding_backend)
+        mmcv.use_backend('cv2')
 
         directory = results['frame_dir']
         filename_tmpl = results['filename_tmpl']
@@ -568,6 +579,26 @@ class PoseDecode(object):
 
 
 @PIPELINES.register_module()
+class MMDecode(DecordInit, DecordDecode, RawFrameDecode, PoseDecode):
+    # rgb_type in ['video', 'frame']
+    def __init__(self, io_backend='disk', rgb_type='frame', **kwargs):
+        self.io_backend = io_backend
+        self.rgb_type = rgb_type
+        self.kwargs = kwargs
+        self.file_client = None
+
+    # def _decode_rgb(self, frame_dir)
+    def __call__(self, results):
+        for modality in results['modalities']:
+            if modality == 'RGB':
+                pass
+            elif modality == 'Pose':
+                pass
+            else:
+                pass
+
+
+@PIPELINES.register_module()
 class LoadFile:
     """Load a pickle file given filename & update to results."""
 
@@ -675,14 +706,11 @@ class RawRGBFlowDecode(object):
 
     Args:
         io_backend (str): IO backend where frames are stored. Default: 'disk'.
-        decoding_backend (str): Backend used for image decoding.
-            Default: 'cv2'.
         kwargs (dict, optional): Arguments for FileClient.
     """
 
-    def __init__(self, io_backend='disk', decoding_backend='cv2', **kwargs):
+    def __init__(self, io_backend='disk', **kwargs):
         self.io_backend = io_backend
-        self.decoding_backend = decoding_backend
         self.kwargs = kwargs
         self.file_client = None
 
@@ -693,7 +721,7 @@ class RawRGBFlowDecode(object):
             results (dict): The resulting dict to be modified and passed
                 to the next transform in pipeline.
         """
-        mmcv.use_backend(self.decoding_backend)
+        mmcv.use_backend('cv2')
 
         directory = results['frame_dir']
         filename_tmpl = results['filename_tmpl']
