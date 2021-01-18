@@ -395,44 +395,22 @@ class RawFrameDecode(object):
         self.kwargs = kwargs
         self.file_client = None
 
-    def _load_frames(self, result):
-        pass
-
-    def __call__(self, results):
-        """Perform the ``RawFrameDecode`` to pick frames given indices.
-
-        Args:
-            results (dict): The resulting dict to be modified and passed
-                to the next transform in pipeline.
-        """
+    def _load_frames(self, frame_dir, filename_tmpl, modality, frame_inds):
         mmcv.use_backend('cv2')
-
-        directory = results['frame_dir']
-        filename_tmpl = results['filename_tmpl']
-        modality = results['modality']
 
         if self.file_client is None:
             self.file_client = FileClient(self.io_backend, **self.kwargs)
-
         imgs = list()
-
-        if results['frame_inds'].ndim != 1:
-            results['frame_inds'] = np.squeeze(results['frame_inds'])
-
-        offset = results.get('offset', 0)
-
-        for frame_idx in results['frame_inds']:
-            frame_idx += offset
+        for frame_idx in frame_inds:
             if modality == 'RGB':
-                filepath = osp.join(directory, filename_tmpl.format(frame_idx))
+                filepath = osp.join(frame_dir, filename_tmpl.format(frame_idx))
                 img_bytes = self.file_client.get(filepath)
-                # Get frame with channel order RGB directly.
                 cur_frame = mmcv.imfrombytes(img_bytes, channel_order='rgb')
                 imgs.append(cur_frame)
             elif modality == 'Flow':
-                x_filepath = osp.join(directory,
+                x_filepath = osp.join(frame_dir,
                                       filename_tmpl.format('x', frame_idx))
-                y_filepath = osp.join(directory,
+                y_filepath = osp.join(frame_dir,
                                       filename_tmpl.format('y', frame_idx))
                 x_img_bytes = self.file_client.get(x_filepath)
                 x_frame = mmcv.imfrombytes(x_img_bytes, flag='grayscale')
@@ -441,6 +419,26 @@ class RawFrameDecode(object):
                 imgs.extend([x_frame, y_frame])
             else:
                 raise NotImplementedError
+        return imgs
+
+    def __call__(self, results):
+        """Perform the ``RawFrameDecode`` to pick frames given indices.
+
+        Args:
+            results (dict): The resulting dict to be modified and passed
+                to the next transform in pipeline.
+        """
+        frame_dir = results['frame_dir']
+        filename_tmpl = results['filename_tmpl']
+        modality = results['modality']
+
+        if results['frame_inds'].ndim != 1:
+            results['frame_inds'] = np.squeeze(results['frame_inds'])
+
+        offset = results.get('offset', 0)
+        frame_inds = results['frame_inds'] + offset
+        imgs = self._load_frames(frame_dir, filename_tmpl, modality,
+                                 frame_inds)
 
         results['imgs'] = imgs
         results['original_shape'] = imgs[0].shape[:2]
@@ -507,6 +505,32 @@ class PoseDecode(object):
         self.drop_njoints = drop_njoints
         self.manipulate_joints = manipulate_joints
 
+    def _drop_kpscore(self, kpscores):
+        for kpscore in kpscores:
+            lt = kpscore.shape[0]
+            for tidx in range(lt):
+                if np.random.random() < 1. / self.drop_per_nframe:
+                    jidxs = np.random.choice(
+                        self.manipulate_joints,
+                        size=self.drop_njoints,
+                        replace=False)
+                    for jidx in jidxs:
+                        kpscore[tidx, jidx] = 0.
+        return kpscores
+
+    def _load_kp(self, kp, frame_inds):
+        return [x[frame_inds].astype(np.float32) for x in kp]
+
+    # drop kpscore happens outside
+    def _load_kpscore(self, kpscore, frame_inds):
+        return [x[frame_inds].astype(np.float32) for x in kpscore]
+
+    def _load_pose_box(self, pose_box, frame_inds):
+        return [x[frame_inds].astype(np.float32) for x in pose_box]
+
+    def _load_compact_heatmap(self, compact_heatmap, frame_inds):
+        return [[x[ind] for ind in frame_inds] for x in compact_heatmap]
+
     def __call__(self, results):
         """Perform the ``RawFrameDecode`` to pick frames given indices.
 
@@ -529,51 +553,27 @@ class PoseDecode(object):
         offset = results.get('offset', 0)
         frame_inds = results['frame_inds'] + offset
 
-        if 'per_frame_box' in results:
-            assert results['num_person'] == len(results['per_frame_box'])
-            # the three items are lists
-            # for storing, we use fp16, here we can convert them to float32
-            results['per_frame_box'] = [
-                x[frame_inds].astype(np.float32)
-                for x in results['per_frame_box']
-            ]
-
         if 'kpscore' in results:
             assert results['num_person'] == len(results['kpscore'])
             if self.random_drop:
-                assert results['num_person'] == 1, 'gym only now'
-                kpscore = results['kpscore'][0]
-                lt = kpscore.shape[0]
-                for tidx in range(lt):
-                    if np.random.random() < 1. / self.drop_per_nframe:
-                        jidxs = np.random.choice(
-                            self.manipulate_joints,
-                            size=self.drop_njoints,
-                            replace=False)
-                        for jidx in jidxs:
-                            kpscore[tidx, jidx] = 0.
-                results['kpscore'][0] = kpscore
+                results['kpscore'] = self._drop_kpscore(results['kpscore'])
 
-            results['kpscore'] = [
-                x[frame_inds].astype(np.float32) for x in results['kpscore']
-            ]
+            results['kpscore'] = self._load_kpscore(results['kpscore'],
+                                                    frame_inds)
 
         if 'kp' in results:
             assert results['num_person'] == len(results['kp'])
-            results['kp'] = [
-                x[frame_inds].astype(np.float32) for x in results['kp']
-            ]
+            results['kp'] = self._load_kp(results['kp'], frame_inds)
 
         if 'pose_box' in results:
             assert results['num_person'] == len(results['pose_box'])
-            results['pose_box'] = [
-                x[frame_inds].astype(np.float32) for x in results['pose_box']
-            ]
+            results['pose_box'] = self._load_pose_box(results['pose_box'],
+                                                      frame_inds)
 
         if 'compact_heatmap' in results:
             assert results['num_person'] == len(results['compact_heatmap'])
-            results['compact_heatmap'] = [[x[ind] for ind in frame_inds]
-                                          for x in results['compact_heatmap']]
+            results['compact_heatmap'] = self._load_compact_heatmap(
+                results['compact_heatmap'], frame_inds)
 
         return results
 
@@ -583,19 +583,36 @@ class MMDecode(DecordInit, DecordDecode, RawFrameDecode, PoseDecode):
     # rgb_type in ['video', 'frame']
     def __init__(self, io_backend='disk', rgb_type='frame', **kwargs):
         self.io_backend = io_backend
+        assert rgb_type in ['frame', 'video']
         self.rgb_type = rgb_type
         self.kwargs = kwargs
         self.file_client = None
 
     # def _decode_rgb(self, frame_dir)
     def __call__(self, results):
-        for modality in results['modalities']:
-            if modality == 'RGB':
-                pass
-            elif modality == 'Pose':
-                pass
+        for mod in results['modalities']:
+            if results[f'{mod}_inds'].ndim != 1:
+                results[f'{mod}_inds'] = np.squeeze(results[f'{mod}_inds'])
+            frame_inds = results[f'{mod}_inds']
+            if mod == 'RGB':
+                if self.rgb_type == 'video':
+                    video_reader = self._get_videoreader(results['frame_dir'])
+                    imgs = self._decord_load_frames(video_reader, frame_inds)
+                    del video_reader
+                else:
+                    # + 1 for RawframeDataset
+                    imgs = self._load_frames(results['frame_dir'],
+                                             results['filename_tmpl'], 'RGB',
+                                             frame_inds + 1)
+                results['imgs'] = imgs
+            elif mod == 'Pose':
+                assert 'kp' in results
+                assert 'kpscore' in results
+                results['kp'] = self._load_kp(results['kp'], frame_inds)
+                results['kpscore'] = self._load_kp(results['kpscore'],
+                                                   frame_inds)
             else:
-                pass
+                raise NotImplementedError
 
 
 @PIPELINES.register_module()
