@@ -10,7 +10,7 @@ import numpy as np
 from mmcv.fileio import FileClient
 
 from ..registry import PIPELINES
-from .augmentations import PoseFlip
+from .augmentations import Flip
 
 
 @PIPELINES.register_module()
@@ -1008,20 +1008,24 @@ class ConvertCompactHeatmap:
 @PIPELINES.register_module()
 class GeneratePoseTarget(object):
 
-    def __init__(self,
-                 sigma=2,
-                 use_score=False,
-                 with_kp=True,
-                 with_limb=False,
-                 left=[],
-                 right=[],
-                 skeletons=[],
-                 double=False):
+    def __init__(
+            self,
+            sigma=0.6,
+            use_score=False,
+            with_kp=True,
+            with_limb=False,
+            # scale the size of generated kp heatmap
+            scaling=0.25,
+            left=[],
+            right=[],
+            skeletons=[],
+            double=False):
 
         self.sigma = sigma
         self.use_score = use_score
         self.with_kp = with_kp
         self.with_limb = with_limb
+        self.scaling = scaling
         self.double = double
         # an auxiliary const
         self.eps = 1e-4
@@ -1171,6 +1175,11 @@ class GeneratePoseTarget(object):
 
         img_h, img_w = results['img_shape']
 
+        # scale img_h, img_w and kps
+        img_h = int(img_h * self.scaling + 0.5)
+        img_w = int(img_w * self.scaling + 0.5)
+        all_kps = [kp * self.scaling for kp in all_kps]
+
         imgs = []
         for i in range(num_frame):
             # We list shape of each item in the list
@@ -1186,21 +1195,18 @@ class GeneratePoseTarget(object):
             imgs.append(
                 self.generate_heatmap(img_h, img_w, kps, sigma, max_values))
 
-        if 'real_clip_len' in results:
-            num_pad = results['clip_len'] - results['real_clip_len']
-            for i in range(num_pad):
-                imgs.append(np.zeros_like(imgs[0]))
-
         return imgs
 
     def __call__(self, results):
+        key = 'heatmap_imgs' if 'imgs' in results else 'imgs'
+
         if not self.double:
-            results['imgs'] = np.stack(self.gen_an_aug(results))
+            results[key] = np.stack(self.gen_an_aug(results))
         else:
             results_ = cp.deepcopy(results)
-            flip = PoseFlip(flip_ratio=1, left=self.left, right=self.right)
+            flip = Flip(flip_ratio=1, left=self.left, right=self.right)
             results_ = flip(results_)
-            results['imgs'] = np.concatenate(
+            results[key] = np.concatenate(
                 [self.gen_an_aug(results),
                  self.gen_an_aug(results_)])
         return results

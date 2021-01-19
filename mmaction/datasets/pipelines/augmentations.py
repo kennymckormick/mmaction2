@@ -181,36 +181,67 @@ class PoseCompact:
 
 
 @PIPELINES.register_module()
-class Padding:
+class MMPad:
 
-    def __init__(self, hw_ratio=1., padding=0.):
+    def __init__(self, hw_ratio=None, padding=0.):
         if isinstance(hw_ratio, float):
             hw_ratio = (hw_ratio, hw_ratio)
         self.hw_ratio = hw_ratio
+        self.padding = padding
+
+    # New shape is larger than old shape
+    def _pad_kps(self, kps, old_shape, new_shape):
+        offset_y = int((new_shape[0] - old_shape[0]) / 2)
+        offset_x = int((new_shape[1] - old_shape[1]) / 2)
+        offset = np.array([offset_x, offset_y], dtype=np.float32)
+        return [kp + offset for kp in kps]
+
+    def _pad_imgs(self, imgs, old_shape, new_shape):
+        diff_y, diff_x = new_shape[0] - old_shape[0], new_shape[1] - old_shape[
+            1]
+        return [
+            np.pad(
+                img, ((diff_y // 2, diff_y - diff_y // 2),
+                      (diff_x // 2, diff_x - diff_x // 2), (0, 0)),
+                'constant',
+                constant_values=127) for img in imgs
+        ]
 
     def __call__(self, results):
-        pass
-        # img_shape = results['img_shape']
+        h, w = results['img_shape']
+        h, w = h * (1 + self.padding), w * (1 + self.padding)
+        if self.hw_ratio is not None:
+            h = max(self.hw_ratio[0] * w, h)
+            w = max(1 / self.hw_ratio[1] * h, w)
+        h, w = int(h), int(w)
+        results['kp'] = self._pad_kps(results['kp'], results['img_shape'],
+                                      (h, w))
+        results['imgs'] = self._pad_imgs(results['imgs'], results['img_shape'],
+                                         (h, w))
 
 
 @PIPELINES.register_module()
-class RandomCrop(object):
+class RandomCrop:
     """Vanilla square random crop that specifics the output size.
 
     Required keys in results are "imgs" and "img_shape", added or
-    modified keys are "imgs", "lazy"; Required keys in "lazy" are "flip",
-    "crop_bbox", added or modified key is "crop_bbox".
+    modified keys are "imgs" .
 
     Args:
         size (int): The output size of the images.
-        lazy (bool): Determine whether to apply lazy operation. Default: False.
     """
 
-    def __init__(self, size, lazy=False):
+    def __init__(self, size):
         if not isinstance(size, int):
             raise TypeError(f'Size must be an int, but got {type(size)}')
         self.size = size
-        self.lazy = lazy
+
+    def _crop_kps(self, kps, crop_bbox):
+        return [kp - crop_bbox[:2] for kp in kps]
+
+    def _crop_imgs(self, imgs, crop_bbox):
+        x1, y1, x2, y2 = crop_bbox
+        return [img[y1:y2, x1:x2] for img in imgs]
 
     def __call__(self, results):
         """Performs the RandomCrop augmentation.
@@ -219,7 +250,6 @@ class RandomCrop(object):
             results (dict): The resulting dict to be modified and passed
                 to the next transform in pipeline.
         """
-        _init_lazy_if_proper(results, self.lazy)
 
         img_h, img_w = results['img_shape']
         assert self.size <= img_h and self.size <= img_w
@@ -233,13 +263,10 @@ class RandomCrop(object):
 
         new_h, new_w = self.size, self.size
 
-        results['crop_bbox'] = np.array(
+        crop_bbox = np.array(
             [x_offset, y_offset, x_offset + new_w, y_offset + new_h])
+        results['crop_bbox'] = crop_bbox
         results['img_shape'] = (new_h, new_w)
-
-        modality = results['modality']
-        if modality == 'Pose':
-            assert not self.lazy
 
         crop_quadruple = results.get('crop_quadruple', (0., 0., 1., 1.))
         new_crop_quadruple = (x_offset / img_w, y_offset / img_h,
@@ -247,79 +274,37 @@ class RandomCrop(object):
         crop_quadruple = combine_quadruple(crop_quadruple, new_crop_quadruple)
         results['crop_quadruple'] = crop_quadruple
 
-        if not self.lazy:
-            if modality == 'Pose':
-                new_origin = np.array([x_offset, y_offset])
-                results['kp'] = [kp - new_origin for kp in results['kp']]
-                if 'per_frame_box' not in results:
-                    return results
-
-                new_per_frame_box = []
-                for item in results['per_frame_box']:
-                    box_invalid_mask = np.isclose(item,
-                                                  np.ones_like(item) * -1)
-                    # all four value should be close to -1
-                    box_invalid_mask = np.all(box_invalid_mask, axis=1)
-                    box_invalid_mask = np.stack(
-                        [box_invalid_mask] * 4, axis=-1)
-                    new_item = cp.deepcopy(item)
-                    new_item[:, :2] -= new_origin
-                    new_per_frame_box.append(item * box_invalid_mask +
-                                             new_item * (1 - box_invalid_mask))
-                results['per_frame_box'] = new_per_frame_box
-            else:
-                results['imgs'] = [
-                    img[y_offset:y_offset + new_h, x_offset:x_offset + new_w]
-                    for img in results['imgs']
-                ]
-        else:
-            lazyop = results['lazy']
-            if lazyop['flip']:
-                raise NotImplementedError('Put Flip at last for now')
-
-            # record crop_bbox in lazyop dict to ensure only crop once in Fuse
-            lazy_left, lazy_top, lazy_right, lazy_bottom = lazyop['crop_bbox']
-            left = x_offset * (lazy_right - lazy_left) / img_w
-            right = (x_offset + new_w) * (lazy_right - lazy_left) / img_w
-            top = y_offset * (lazy_bottom - lazy_top) / img_h
-            bottom = (y_offset + new_h) * (lazy_bottom - lazy_top) / img_h
-            lazyop['crop_bbox'] = np.array([(lazy_left + left),
-                                            (lazy_top + top),
-                                            (lazy_left + right),
-                                            (lazy_top + bottom)],
-                                           dtype=np.float32)
+        if 'kp' in results:
+            results['kp'] = self._crop_kps(results['kp'], crop_bbox)
+        if 'imgs' in results:
+            results['imgs'] = self._crop_imgs(results['imgs'], crop_bbox)
 
         return results
 
     def __repr__(self):
-        repr_str = (f'{self.__class__.__name__}(size={self.size}, '
-                    f'lazy={self.lazy})')
+        repr_str = (f'{self.__class__.__name__}(size={self.size})')
         return repr_str
 
 
 @PIPELINES.register_module()
-class RandomResizedCrop(object):
+class RandomResizedCrop(RandomCrop):
     """Random crop that specifics the area and height-weight ratio range.
 
-    Required keys in results are "imgs", "img_shape", "crop_bbox" and "lazy",
-    added or modified keys are "imgs", "crop_bbox" and "lazy"; Required keys
-    in "lazy" are "flip", "crop_bbox", added or modified key is "crop_bbox".
+    Required keys in results are "imgs", "img_shape", "crop_bbox",
+    added or modified keys are "imgs", "crop_bbox".
 
     Args:
         area_range (Tuple[float]): The candidate area scales range of
             output cropped images. Default: (0.08, 1.0).
         aspect_ratio_range (Tuple[float]): The candidate aspect ratio range of
             output cropped images. Default: (3 / 4, 4 / 3).
-        lazy (bool): Determine whether to apply lazy operation. Default: False.
     """
 
     def __init__(self,
                  area_range=(0.08, 1.0),
-                 aspect_ratio_range=(3 / 4, 4 / 3),
-                 lazy=False):
+                 aspect_ratio_range=(3 / 4, 4 / 3)):
         self.area_range = area_range
         self.aspect_ratio_range = aspect_ratio_range
-        self.lazy = lazy
         if not mmcv.is_tuple_of(self.area_range, float):
             raise TypeError(f'Area_range must be a tuple of float, '
                             f'but got {type(area_range)}')
@@ -372,7 +357,7 @@ class RandomResizedCrop(object):
                 y_offset = random.randint(0, img_h - crop_h)
                 return x_offset, y_offset, x_offset + crop_w, y_offset + crop_h
 
-        # Fallback
+        # Fallback to maximized CenterCrop
         crop_size = min(img_h, img_w)
         x_offset = (img_w - crop_size) // 2
         y_offset = (img_h - crop_size) // 2
@@ -399,71 +384,30 @@ class RandomResizedCrop(object):
         crop_quadruple = combine_quadruple(crop_quadruple, new_crop_quadruple)
         results['crop_quadruple'] = crop_quadruple
 
-        results['crop_bbox'] = np.array([left, top, right, bottom])
+        crop_bbox = np.array([left, top, right, bottom])
+        results['crop_bbox'] = crop_bbox
         results['img_shape'] = (new_h, new_w)
-        modality = results['modality']
-        if modality == 'Pose':
-            assert not self.lazy
 
-        if not self.lazy:
-            if modality == 'Pose':
-                new_origin = np.array([left, top])
-                results['kp'] = [kp - new_origin for kp in results['kp']]
-                if 'per_frame_box' not in results:
-                    return results
-
-                new_per_frame_box = []
-                for item in results['per_frame_box']:
-                    box_invalid_mask = np.isclose(item,
-                                                  np.ones_like(item) * -1)
-                    # all four value should be close to -1
-                    box_invalid_mask = np.all(box_invalid_mask, axis=1)
-                    box_invalid_mask = np.stack(
-                        [box_invalid_mask] * 4, axis=-1)
-                    new_item = cp.deepcopy(item)
-                    new_item[:, :2] -= new_origin
-                    new_per_frame_box.append(item * box_invalid_mask +
-                                             new_item * (1 - box_invalid_mask))
-                results['per_frame_box'] = new_per_frame_box
-            else:
-                results['imgs'] = [
-                    img[top:bottom, left:right] for img in results['imgs']
-                ]
-        else:
-            lazyop = results['lazy']
-            if lazyop['flip']:
-                raise NotImplementedError('Put Flip at last for now')
-
-            # record crop_bbox in lazyop dict to ensure only crop once in Fuse
-            lazy_left, lazy_top, lazy_right, lazy_bottom = lazyop['crop_bbox']
-            left = left * (lazy_right - lazy_left) / img_w
-            right = right * (lazy_right - lazy_left) / img_w
-            top = top * (lazy_bottom - lazy_top) / img_h
-            bottom = bottom * (lazy_bottom - lazy_top) / img_h
-            lazyop['crop_bbox'] = np.array([(lazy_left + left),
-                                            (lazy_top + top),
-                                            (lazy_left + right),
-                                            (lazy_top + bottom)],
-                                           dtype=np.float32)
+        if 'kp' in results:
+            results['kp'] = self._crop_kps(results['kp'], crop_bbox)
+        if 'imgs' in results:
+            results['imgs'] = self._crop_imgs(results['imgs'], crop_bbox)
 
         return results
 
     def __repr__(self):
         repr_str = (f'{self.__class__.__name__}('
                     f'area_range={self.area_range}, '
-                    f'aspect_ratio_range={self.aspect_ratio_range}, '
-                    f'lazy={self.lazy})')
+                    f'aspect_ratio_range={self.aspect_ratio_range})')
         return repr_str
 
 
 @PIPELINES.register_module()
-class Resize(object):
+class Resize:
     """Resize images to a specific size.
 
     Required keys are "imgs", "img_shape", "modality", added or modified
-    keys are "imgs", "img_shape", "keep_ratio", "scale_factor", "lazy",
-    "resize_size". Required keys in "lazy" is None, added or modified key is
-    "interpolation".
+    keys are "imgs", "img_shape", "keep_ratio", "scale_factor", "resize_size".
 
     Args:
         scale (float | Tuple[int]): If keep_ratio is True, it serves as scaling
@@ -477,14 +421,9 @@ class Resize(object):
             given size. Default: True.
         interpolation (str): Algorithm used for interpolation:
             "nearest" | "bilinear". Default: "bilinear".
-        lazy (bool): Determine whether to apply lazy operation. Default: False.
     """
 
-    def __init__(self,
-                 scale,
-                 keep_ratio=True,
-                 interpolation='bilinear',
-                 lazy=False):
+    def __init__(self, scale, keep_ratio=True, interpolation='bilinear'):
         if isinstance(scale, float):
             if scale <= 0:
                 raise ValueError(f'Invalid scale {scale}, must be positive.')
@@ -500,7 +439,40 @@ class Resize(object):
         self.scale = scale
         self.keep_ratio = keep_ratio
         self.interpolation = interpolation
-        self.lazy = lazy
+
+    def nchannel_resize(self, img, new_w, new_h):
+        num_channels = img.shape[2]
+        idx, imgs = 0, []
+        while idx < num_channels:
+            if idx + 3 <= num_channels:
+                img = mmcv.imresize(
+                    img[:, :, idx:idx + 3], (new_w, new_h),
+                    interpolation=self.interpolation)
+                idx += 3
+            else:
+                img = mmcv.imresize(
+                    img[:, :, idx], (new_w, new_h),
+                    interpolation=self.interpolation)
+                img = img[..., np.newaxis]
+                idx += 1
+            imgs.append(img)
+
+        img = np.concatenate(imgs, axis=2)
+        return img
+
+    def _resize_kps(self, kps, scale_factor):
+        return [kp * self.scale_factor for kp in kps]
+
+    def _resize_imgs(self, imgs, new_w, new_h, modality):
+        # If MM, modality can be a list
+        if modality == 'RGB' or 'RGB' in modality:
+            return [
+                mmcv.imresize(
+                    img, (new_w, new_h), interpolation=self.interpolation)
+                for img in imgs
+            ]
+        elif modality in ['RGBFlow', 'PoTion']:
+            return [self.nchannel_resize(img, new_w, new_h) for img in imgs]
 
     def __call__(self, results):
         """Performs the Resize augmentation.
@@ -509,8 +481,6 @@ class Resize(object):
             results (dict): The resulting dict to be modified and passed
                 to the next transform in pipeline.
         """
-
-        _init_lazy_if_proper(results, self.lazy)
 
         if 'scale_factor' not in results:
             results['scale_factor'] = np.array([1, 1], dtype=np.float32)
@@ -528,81 +498,18 @@ class Resize(object):
         results['keep_ratio'] = self.keep_ratio
         results['scale_factor'] = results['scale_factor'] * self.scale_factor
 
-        modality = results['modality']
-        if modality == 'Pose':
-            assert not self.lazy
+        if 'kp' in results:
+            results['kp'] = self._resize_kps(results['kp'], self.scale_factor)
 
-        if not self.lazy:
-            # The modality matters, if modality == 'RGBFlow', we have to use
-            # nchannel_resize. In nchannel_resize, n channels are divided into
-            # groups of 3 channels or 1 channel.
-            def nchannel_resize(img):
-                num_channels = img.shape[2]
-                idx = 0
-                imgs = []
-                while idx < num_channels:
-                    multi = False
-                    if idx + 3 <= num_channels:
-                        multi = True
-                    if multi:
-                        img = mmcv.imresize(
-                            img[:, :, idx:idx + 3], (new_w, new_h),
-                            interpolation=self.interpolation)
-                    else:
-                        img = mmcv.imresize(
-                            img[:, :, idx], (new_w, new_h),
-                            interpolation=self.interpolation)
-                        img = img[..., np.newaxis]
-                    idx += 3 if multi else 1
-                    imgs.append(img)
-
-                img = np.concatenate(imgs, axis=2)
-                return img
-
-            if modality == 'Pose':
-                # OK, finally we look at kpscore to decide whether to visualize
-                results['kp'] = [x * self.scale_factor for x in results['kp']]
-
-                if 'per_frame_box' not in results:
-                    return results
-
-                new_per_frame_box = []
-                for item in results['per_frame_box']:
-                    box_invalid_mask = np.isclose(item,
-                                                  np.ones_like(item) * -1)
-                    # all four value should be close to -1
-                    box_invalid_mask = np.all(box_invalid_mask, axis=1)
-                    box_invalid_mask = np.stack(
-                        [box_invalid_mask] * 4, axis=-1)
-                    new_item = cp.deepcopy(item)
-                    new_item[:, 0::2] *= self.scale_factor[0]
-                    new_item[:, 1::2] *= self.scale_factor[1]
-                    new_per_frame_box.append(item * box_invalid_mask +
-                                             new_item * (1 - box_invalid_mask))
-                results['per_frame_box'] = new_per_frame_box
-            elif results['modality'] in ['RGBFlow', 'PoTion']:
-                results['imgs'] = [
-                    nchannel_resize(img) for img in results['imgs']
-                ]
-            else:
-                results['imgs'] = [
-                    mmcv.imresize(
-                        img, (new_w, new_h), interpolation=self.interpolation)
-                    for img in results['imgs']
-                ]
-        else:
-            lazyop = results['lazy']
-            if lazyop['flip']:
-                raise NotImplementedError('Put Flip at last for now')
-            lazyop['interpolation'] = self.interpolation
+        if 'imgs' in results:
+            results['imgs'] = self._resize_imgs(results['imgs'])
 
         return results
 
     def __repr__(self):
         repr_str = (f'{self.__class__.__name__}('
                     f'scale={self.scale}, keep_ratio={self.keep_ratio}, '
-                    f'interpolation={self.interpolation}, '
-                    f'lazy={self.lazy})')
+                    f'interpolation={self.interpolation})')
         return repr_str
 
 
@@ -642,15 +549,9 @@ class RandomRescale:
         """
         short_edge = np.random.randint(self.scale_range[0],
                                        self.scale_range[1] + 1)
-
-        modality = results['modality']
-        if modality == 'Pose':
-            resize = Resize((-1, short_edge), keep_ratio=True)
-        else:
-            resize = Resize((-1, short_edge),
-                            keep_ratio=True,
-                            interpolation=self.interpolation,
-                            lazy=False)
+        resize = Resize((-1, short_edge),
+                        keep_ratio=True,
+                        interpolation=self.interpolation)
         results = resize(results)
 
         results['short_edge'] = short_edge
@@ -665,38 +566,61 @@ class RandomRescale:
 
 
 @PIPELINES.register_module()
-class Flip(object):
+class Flip:
     """Flip the input images with a probability.
 
     Reverse the order of elements in the given imgs with a specific direction.
     The shape of the imgs is preserved, but the elements are reordered.
     Required keys are "imgs", "img_shape", "modality", added or modified
-    keys are "imgs", "lazy" and "flip_direction". Required keys in "lazy" is
-    None, added or modified key are "flip" and "flip_direction".
+    keys are "imgs", "flip_direction".
 
     Args:
         flip_ratio (float): Probability of implementing flip. Default: 0.5.
         direction (str): Flip imgs horizontally or vertically. Options are
             "horizontal" | "vertical". Default: "horizontal".
-        lazy (bool): Determine whether to apply lazy operation. Default: False.
     """
-    _directions = ['horizontal', 'vertical']
 
-    def __init__(self,
-                 flip_ratio=0.5,
-                 direction='horizontal',
-                 left=[],
-                 right=[],
-                 lazy=False):
-        if direction not in self._directions:
-            raise ValueError(f'Direction {direction} is not supported. '
-                             f'Currently support ones are {self._directions}')
+    def __init__(self, flip_ratio=0.5, left=[], right=[]):
         self.flip_ratio = flip_ratio
         self.left = left
         self.right = right
         assert len(self.left) == len(self.right)
-        self.direction = direction
-        self.lazy = lazy
+        self.direction = 'horizontal'
+
+    def _flip_imgs(self, imgs, modality):
+        _ = [mmcv.imfilp_(img, self.direction) for img in imgs]
+        lt = len(imgs)
+        if modality == 'Flow':
+            # 1st Frame of each 2 frames is flow-x
+            for i in range(0, lt, 2):
+                imgs[i] = mmcv.iminvert(imgs[i])
+        elif modality == 'RGBFlow':
+            # 4th channel of each frame is flow-x
+            for i in range(lt):
+                imgs[i][..., 3] = mmcv.iminvert(imgs[i][..., 3])
+        elif modality in ['PoTion', 'Heatmap']:
+            if modality == 'PoTion':
+                assert lt == 1
+            new_order = list(range(imgs[0].shape[-1]))
+            for left, right in zip(self.left, self.right):
+                new_order[left] = right
+                new_order[right] = left
+            imgs = [img[..., new_order] for img in imgs]
+        return imgs
+
+    def _flip_kps(self, kps, kpscores, img_width):
+
+        for kp, kpscore in zip(kps, kpscores):
+            kp[:, :, 0] = img_width - kp[:, :, 0]
+
+            new_order = list(range(kp.shape[1]))
+            for left, right in zip(self.left, self.right):
+                new_order[left] = right
+                new_order[right] = left
+            kp[:] = kp[:, new_order]
+            kpscore[:] = kpscore[:, new_order]
+
+        return kps, kpscores
 
     def __call__(self, results):
         """Performs the Flip augmentation.
@@ -705,10 +629,6 @@ class Flip(object):
             results (dict): The resulting dict to be modified and passed
                 to the next transform in pipeline.
         """
-        _init_lazy_if_proper(results, self.lazy)
-        modality = results['modality']
-        if modality == 'Flow':
-            assert self.direction == 'horizontal'
 
         if np.random.rand() < self.flip_ratio:
             flip = True
@@ -718,54 +638,23 @@ class Flip(object):
         results['flip'] = flip
         results['flip_direction'] = self.direction
 
+        img_width = results['img_shape'][1]
         crop_quadruple = results.get('crop_quadruple', (0., 0., 1., 1.))
         results['crop_quadruple'] = flip_quadruple(crop_quadruple)
+        modality = results['modality']
 
-        if not self.lazy:
-            if flip:
-                # Inplace ops, no need to write back
-                imgs = results['imgs']
-                for i, img in enumerate(imgs):
-                    mmcv.imflip_(img, self.direction)
-                lt = len(imgs)
-                # Note: iminvert is used for [0-255], before normalization,e.g.
-
-                if modality == 'Flow':
-                    # 1st Frame of each 2 frames is flow-x
-                    for i in range(0, lt, 2):
-                        imgs[i] = mmcv.iminvert(imgs[i])
-                elif modality == 'RGBFlow':
-                    # 4th channel of each frame is flow-x
-                    for i in range(lt):
-                        imgs[i][..., 3] = mmcv.iminvert(imgs[i][..., 3])
-                elif modality == 'PoTion':
-                    assert lt == 1
-                    new_order = list(range(imgs[0].shape[-1]))
-                    for left, right in zip(self.left, self.right):
-                        new_order[left] = right
-                        new_order[right] = left
-                    results['imgs'] = [img[..., new_order] for img in imgs]
-                elif modality == 'Heatmap':
-                    new_order = list(range(imgs[0].shape[-1]))
-                    for left, right in zip(self.left, self.right):
-                        new_order[left] = right
-                        new_order[right] = left
-                    results['imgs'] = [img[..., new_order] for img in imgs]
-
-        else:
-            lazyop = results['lazy']
-            if lazyop['flip']:
-                raise NotImplementedError('Use one Flip please')
-            lazyop['flip'] = flip
-            lazyop['flip_direction'] = self.direction
+        if flip:
+            if 'imgs' in results:
+                results['imgs'] = self._flip_imgs(results['imgs'], modality)
+            if 'kp' in results and 'kpscore' in results:
+                kp, kpscore = self._flip_kps(results['kp'], results['kpscore'],
+                                             img_width)
+                results['kp'], results['kpscore'] = kp, kpscore
 
         return results
 
     def __repr__(self):
-        repr_str = (
-            f'{self.__class__.__name__}('
-            f'flip_ratio={self.flip_ratio}, direction={self.direction}, '
-            f'lazy={self.lazy})')
+        repr_str = f'{self.__class__.__name__}(flip_ratio={self.flip_ratio})'
         return repr_str
 
 
@@ -785,67 +674,7 @@ class HeatmapFlipTest:
 
 
 @PIPELINES.register_module()
-class PoseFlip(Flip):
-
-    def __call__(self, results):
-        modality = results['modality']
-        assert modality == 'Pose'
-
-        if np.random.rand() < self.flip_ratio:
-            flip = True
-        else:
-            flip = False
-
-        results['flip'] = flip
-        results['flip_direction'] = self.direction
-
-        img_width = results['img_shape'][1]
-
-        crop_quadruple = results.get('crop_quadruple', (0., 0., 1., 1.))
-        results['crop_quadruple'] = flip_quadruple(crop_quadruple)
-
-        if flip:
-            for ind, item in enumerate(results['kp']):
-                item[:, :, 0] = img_width - item[:, :, 0]
-                if 'kpscore' in results:
-                    kpscore = results['kpscore'][ind]
-
-                new_order = list(range(item.shape[1]))
-                for left, right in zip(self.left, self.right):
-                    new_order[left] = right
-                    new_order[right] = left
-                item = item[:, new_order]
-                if 'kpscore' in results:
-                    kpscore = kpscore[:, new_order]
-
-            if 'per_frame_box' not in results:
-                return results
-
-            new_per_frame_box = []
-            for item in results['per_frame_box']:
-                box_invalid_mask = np.isclose(item, np.ones_like(item) * -1)
-                # all four value should be close to -1
-                box_invalid_mask = np.all(box_invalid_mask, axis=1)
-                box_invalid_mask = np.stack([box_invalid_mask] * 4, axis=-1)
-                new_item = cp.deepcopy(item)
-                old_right = new_item[:, 0] + new_item[:, 2]
-                new_left = img_width - old_right
-                new_item[:, 0] = new_left
-                new_per_frame_box.append(item * box_invalid_mask + new_item *
-                                         (1 - box_invalid_mask))
-            results['per_frame_box'] = new_per_frame_box
-            return results
-        return results
-
-    def __repr__(self):
-        repr_str = (
-            f'{self.__class__.__name__}('
-            f'flip_ratio={self.flip_ratio}, direction={self.direction})')
-        return repr_str
-
-
-@PIPELINES.register_module()
-class Normalize(object):
+class Normalize:
     """Normalize images with the given mean and std value.
 
     Required keys are "imgs", "img_shape", "modality", added or modified
@@ -879,7 +708,7 @@ class Normalize(object):
     def __call__(self, results):
         modality = results['modality']
 
-        if modality in ['RGB', 'RGBFlow', 'PoTion', 'Heatmap']:
+        if modality in ['RGB', 'RGBFlow'] or 'RGB' in modality:
             n = len(results['imgs'])
             h, w, c = results['imgs'][0].shape
             imgs = np.empty((n, h, w, c), dtype=np.float32)
@@ -932,21 +761,18 @@ class Normalize(object):
 
 
 @PIPELINES.register_module()
-class CenterCrop(object):
+class CenterCrop(RandomCrop):
     """Crop the center area from images.
 
     Required keys are "imgs", "img_shape", added or modified keys are "imgs",
-    "crop_bbox", "lazy" and "img_shape". Required keys in "lazy" is
-    "crop_bbox", added or modified key is "crop_bbox".
+    "crop_bbox", and "img_shape".
 
     Args:
         crop_size (int | tuple[int]): (w, h) of crop size.
-        lazy (bool): Determine whether to apply lazy operation. Default: False.
     """
 
-    def __init__(self, crop_size, lazy=False):
+    def __init__(self, crop_size):
         self.crop_size = _pair(crop_size)
-        self.lazy = lazy
         if not mmcv.is_tuple_of(self.crop_size, int):
             raise TypeError(f'Crop_size must be int or tuple of int, '
                             f'but got {type(crop_size)}')
@@ -958,7 +784,6 @@ class CenterCrop(object):
             results (dict): The resulting dict to be modified and passed
                 to the next transform in pipeline.
         """
-        _init_lazy_if_proper(results, self.lazy)
 
         img_h, img_w = results['img_shape']
         crop_w, crop_h = self.crop_size
@@ -969,7 +794,8 @@ class CenterCrop(object):
         bottom = top + crop_h
         new_h, new_w = bottom - top, right - left
 
-        results['crop_bbox'] = np.array([left, top, right, bottom])
+        crop_bbox = np.array([left, top, right, bottom])
+        results['crop_bbox'] = crop_bbox
         results['img_shape'] = (new_h, new_w)
         crop_quadruple = results.get('crop_quadruple', (0., 0., 1., 1.))
         new_crop_quadruple = (left / img_w, top / img_h, new_w / img_w,
@@ -977,63 +803,21 @@ class CenterCrop(object):
         crop_quadruple = combine_quadruple(crop_quadruple, new_crop_quadruple)
         results['crop_quadruple'] = crop_quadruple
 
-        modality = results['modality']
-
-        if modality == 'Pose':
-            assert not self.lazy
-
-        if not self.lazy:
-            if modality == 'Pose':
-                new_origin = np.array([left, top])
-                results['kp'] = [kp - new_origin for kp in results['kp']]
-                if 'per_frame_box' not in results:
-                    return results
-
-                new_per_frame_box = []
-                for item in results['per_frame_box']:
-                    box_invalid_mask = np.isclose(item,
-                                                  np.ones_like(item) * -1)
-                    # all four value should be close to -1
-                    box_invalid_mask = np.all(box_invalid_mask, axis=1)
-                    box_invalid_mask = np.stack(
-                        [box_invalid_mask] * 4, axis=-1)
-                    new_item = cp.deepcopy(item)
-                    new_item[:, :2] -= new_origin
-                    new_per_frame_box.append(item * box_invalid_mask +
-                                             new_item * (1 - box_invalid_mask))
-                results['per_frame_box'] = new_per_frame_box
-            else:
-                results['imgs'] = [
-                    img[top:bottom, left:right] for img in results['imgs']
-                ]
-        else:
-            lazyop = results['lazy']
-            if lazyop['flip']:
-                raise NotImplementedError('Put Flip at last for now')
-
-            # record crop_bbox in lazyop dict to ensure only crop once in Fuse
-            lazy_left, lazy_top, lazy_right, lazy_bottom = lazyop['crop_bbox']
-            left = left * (lazy_right - lazy_left) / img_w
-            right = right * (lazy_right - lazy_left) / img_w
-            top = top * (lazy_bottom - lazy_top) / img_h
-            bottom = bottom * (lazy_bottom - lazy_top) / img_h
-            lazyop['crop_bbox'] = np.array([(lazy_left + left),
-                                            (lazy_top + top),
-                                            (lazy_left + right),
-                                            (lazy_top + bottom)],
-                                           dtype=np.float32)
+        if 'kp' in results:
+            results['kp'] = self._crop_kps(results['kp'], crop_bbox)
+        if 'imgs' in results:
+            results['imgs'] = self._crop_imgs(results['imgs'], crop_bbox)
 
         return results
 
     def __repr__(self):
-        repr_str = (f'{self.__class__.__name__}(crop_size={self.crop_size}, '
-                    f'lazy={self.lazy})')
+        repr_str = f'{self.__class__.__name__}(crop_size={self.crop_size})'
         return repr_str
 
 
 @PIPELINES.register_module()
 class ThreeCrop(object):
-    """Crop images into three crops.
+    """Crop images into three crops. Works for image only now !!!!
 
     Crop the images equally into three crops with equal intervals along the
     shorter side.
