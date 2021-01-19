@@ -27,26 +27,31 @@ class ResNet3dPathway(ResNet3d):
         **kwargs (keyword arguments): Keywork arguments for ResNet3d.
     """
 
-    def __init__(self,
-                 *args,
-                 lateral=False,
-                 speed_ratio=8,
-                 channel_ratio=8,
-                 fusion_kernel=5,
-                 **kwargs):
+    def __init__(
+            self,
+            *args,
+            lateral=False,
+            speed_ratio=8,
+            channel_ratio=8,
+            fusion_kernel=5,
+            # lateral_infl: The output channel of the lateral will be
+            # int(self.inplanes * self.lateral_infl // self.channel_ratio)
+            lateral_infl=2,
+            lateral_activate=[1, 1, 1, 1],
+            **kwargs):
         self.lateral = lateral
         self.speed_ratio = speed_ratio
         self.channel_ratio = channel_ratio
         self.fusion_kernel = fusion_kernel
+        self.lateral_infl = lateral_infl
+        # corresponding to input of res_layer
+        self.lateral_activate = lateral_activate
         super().__init__(*args, **kwargs)
         self.inplanes = self.base_channels
         if self.lateral:
             self.conv1_lateral = ConvModule(
                 self.inplanes // self.channel_ratio,
-                # https://arxiv.org/abs/1812.03982, the
-                # third type of lateral connection has out_channel:
-                # 2 * \beta * C
-                self.inplanes * 2 // self.channel_ratio,
+                int(self.inplanes * self.lateral_infl // self.channel_ratio),
                 kernel_size=(fusion_kernel, 1, 1),
                 stride=(self.speed_ratio, 1, 1),
                 padding=((fusion_kernel - 1) // 2, 0, 0),
@@ -67,7 +72,8 @@ class ResNet3dPathway(ResNet3d):
                     self, lateral_name,
                     ConvModule(
                         self.inplanes // self.channel_ratio,
-                        self.inplanes * 2 // self.channel_ratio,
+                        int(self.inplanes * self.lateral_infl //
+                            self.channel_ratio),
                         kernel_size=(fusion_kernel, 1, 1),
                         stride=(self.speed_ratio, 1, 1),
                         padding=((fusion_kernel - 1) // 2, 0, 0),
@@ -78,6 +84,7 @@ class ResNet3dPathway(ResNet3d):
                 self.lateral_connections.append(lateral_name)
 
     def make_res_layer(self,
+                       idx,
                        block,
                        inplanes,
                        planes,
@@ -144,8 +151,9 @@ class ResNet3dPathway(ResNet3d):
         dilation = dilation if not isinstance(dilation,
                                               int) else (dilation, ) * blocks
         assert len(inflate) == blocks and len(non_local) == blocks
-        if self.lateral:
-            lateral_inplanes = inplanes * 2 // self.channel_ratio
+        if self.lateral and self.lateral_activate[idx]:
+            lateral_inplanes = int(inplanes * self.lateral_infl //
+                                   self.channel_ratio)
         else:
             lateral_inplanes = 0
 

@@ -463,7 +463,7 @@ class ResNet3d(nn.Module):
                  lw_dropout=0,
                  sw_dropout=0,
                  with_pool1=True,
-                 with_pool2=True,
+                 with_pool2=False,
                  se=None,
                  style='pytorch',
                  frozen_stages=-1,
@@ -557,6 +557,7 @@ class ResNet3d(nn.Module):
             dilation = dilations[i]
             planes = self.base_channels * 2**i
             res_layer = self.make_res_layer(
+                i,
                 self.block,
                 self.inplanes,
                 planes,
@@ -588,6 +589,7 @@ class ResNet3d(nn.Module):
             len(self.stage_blocks) - 1)
 
     def make_res_layer(self,
+                       idx,
                        block,
                        inplanes,
                        planes,
@@ -613,6 +615,7 @@ class ResNet3d(nn.Module):
         """Build residual layer for ResNet3D.
 
         Args:
+            idx (int): The index of the res layer.
             block (nn.Module): Residual module to be built.
             inplanes (int): Number of channels for the input feature
                 in each block.

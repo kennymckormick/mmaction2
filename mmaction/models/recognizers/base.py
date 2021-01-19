@@ -156,17 +156,19 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
 
         return loss, log_vars
 
-    def forward(self, imgs, label=None, return_loss=True, **kwargs):
+    def forward(self, return_loss=True, **kwargs):
         """Define the computation performed at every call."""
         img_metas = None
         if 'img_metas' in kwargs:
-            img_metas = kwargs['img_metas']
+            img_metas = kwargs.pop('img_metas')
         if return_loss:
-            if label is None:
+            if 'label' not in kwargs:
                 raise ValueError('Label should not be None.')
-            return self.forward_train(imgs, label, img_metas=img_metas)
+            return self.forward_train(img_metas=img_metas, **kwargs)
         else:
-            return self.forward_test(imgs, img_metas=img_metas)
+            if 'label' in kwargs:
+                kwargs.pop('label')
+            return self.forward_test(img_metas=img_metas, **kwargs)
 
     def train_step(self, data_batch, optimizer, **kwargs):
         """The iteration step during training.
@@ -194,15 +196,13 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
                 DDP, it means the batch size on each GPU), which is used for
                 averaging the logs.
         """
-        imgs = data_batch.pop('imgs')
-        label = data_batch.pop('label')
-        kwargs.update(data_batch)
-
-        losses = self(imgs, label, **kwargs)
-
+        losses = self(return_loss=True, **data_batch, **kwargs)
         loss, log_vars = self._parse_losses(losses)
 
-        outputs = dict(loss=loss, log_vars=log_vars, num_samples=len(imgs))
+        outputs = dict(
+            loss=loss,
+            log_vars=log_vars,
+            num_samples=len(next(iter(data_batch.values()))))
 
         return outputs
 
@@ -213,14 +213,14 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         during val epochs. Note that the evaluation after training epochs is
         not implemented with this method, but an evaluation hook.
         """
-        imgs = data_batch.pop('imgs')
-        label = data_batch.pop('label')
         kwargs.update(data_batch)
 
-        losses = self(imgs, label, **kwargs)
-
+        losses = self(return_loss=False, **data_batch, **kwargs)
         loss, log_vars = self._parse_losses(losses)
 
-        outputs = dict(loss=loss, log_vars=log_vars, num_samples=len(imgs))
+        outputs = dict(
+            loss=loss,
+            log_vars=log_vars,
+            num_samples=len(next(iter(data_batch.values()))))
 
         return outputs

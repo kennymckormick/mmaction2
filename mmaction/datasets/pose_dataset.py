@@ -205,20 +205,40 @@ class PoseDataset(BaseDataset):
             print_log(msg, logger=logger)
 
             if metric == 'top_k_accuracy':
-                top_k_acc = top_k_accuracy(results, gt_labels, topk)
-                log_msg = []
-                for k, acc in zip(topk, top_k_acc):
-                    eval_results[f'top{k}_acc'] = acc
-                    log_msg.append(f'\ntop{k}_acc\t{acc:.4f}')
-                log_msg = ''.join(log_msg)
-                print_log(log_msg, logger=logger)
+                if isinstance(results[0], dict):
+                    for key in results[0]:
+                        key_results = [result[key] for result in results]
+                        top_k_acc = top_k_accuracy(key_results, gt_labels,
+                                                   topk)
+                        log_msg = []
+                        for k, acc in zip(topk, top_k_acc):
+                            eval_results[f'{key}_top{k}_acc'] = acc
+                            log_msg.append(f'\n{key}_top{k}_acc\t{acc:.4f}')
+                        log_msg = ''.join(log_msg)
+                        print_log(log_msg, logger=logger)
+                else:
+                    top_k_acc = top_k_accuracy(results, gt_labels, topk)
+                    log_msg = []
+                    for k, acc in zip(topk, top_k_acc):
+                        eval_results[f'top{k}_acc'] = acc
+                        log_msg.append(f'\ntop{k}_acc\t{acc:.4f}')
+                    log_msg = ''.join(log_msg)
+                    print_log(log_msg, logger=logger)
                 continue
 
             if metric == 'mean_class_accuracy':
-                mean_acc = mean_class_accuracy(results, gt_labels)
-                eval_results['mean_class_accuracy'] = mean_acc
-                log_msg = f'\nmean_acc\t{mean_acc:.4f}'
-                print_log(log_msg, logger=logger)
+                if isinstance(results[0], dict):
+                    for key in results[0]:
+                        key_results = [result[key] for result in results]
+                        mean_acc = mean_class_accuracy(results, gt_labels)
+                        eval_results[f'{key}_mean_class_accuracy'] = mean_acc
+                        log_msg = f'\n{key}_mean_acc\t{mean_acc:.4f}'
+                        print_log(log_msg, logger=logger)
+                    else:
+                        mean_acc = mean_class_accuracy(results, gt_labels)
+                        eval_results['mean_class_accuracy'] = mean_acc
+                        log_msg = f'\nmean_acc\t{mean_acc:.4f}'
+                        print_log(log_msg, logger=logger)
                 continue
 
         return eval_results
