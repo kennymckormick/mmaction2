@@ -133,7 +133,7 @@ class MMPad:
         if self.hw_ratio is not None:
             h = max(self.hw_ratio[0] * w, h)
             w = max(1 / self.hw_ratio[1] * h, w)
-        h, w = int(h), int(w)
+        h, w = int(h + 0.5), int(w + 0.5)
         if 'kp' in results:
             results['kp'] = self._pad_kps(results['kp'], results['img_shape'],
                                           (h, w))
@@ -153,8 +153,8 @@ class MMPad:
             else:
                 results['imgs'] = self._pad_imgs(results['imgs'],
                                                  (real_h, real_w),
-                                                 (int(h / real_h_ratio),
-                                                  int(w / real_w_ratio)))
+                                                 (int(h / real_h_ratio + 0.5),
+                                                  int(w / real_w_ratio + 0.5)))
         results['img_shape'] = (h, w)
         return results
 
