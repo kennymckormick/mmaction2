@@ -8,8 +8,9 @@ from .base import BaseRecognizer
 class MMRecognizer3D(BaseRecognizer):
     """MultiModality 3D recognizer model framework."""
 
-    def forward_train(self, imgs, heatmap_imgs, labels, img_metas=None):
+    def forward_train(self, imgs, heatmap_imgs, label, img_metas=None):
         """Defines the computation performed at every call when training."""
+        labels = label
         assert not hasattr(self, 'neck')
         # It's OK, 1 clip training
         imgs = imgs.reshape((-1, ) + imgs.shape[2:])

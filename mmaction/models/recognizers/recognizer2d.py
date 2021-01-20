@@ -6,8 +6,9 @@ from .base import BaseRecognizer
 class Recognizer2D(BaseRecognizer):
     """2D recognizer model framework."""
 
-    def forward_train(self, imgs, labels, img_metas=None):
+    def forward_train(self, imgs, label, img_metas=None):
         """Defines the computation performed at every call when training."""
+        labels = label
         batches = imgs.shape[0]
         imgs = imgs.reshape((-1, ) + imgs.shape[2:])
         num_segs = imgs.shape[0] // batches

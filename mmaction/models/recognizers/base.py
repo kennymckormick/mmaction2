@@ -110,7 +110,7 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         return cls_score
 
     @abstractmethod
-    def forward_train(self, imgs, labels, img_metas=None):
+    def forward_train(self, imgs, label, img_metas=None):
         """Defines the computation performed at every call when training."""
         pass
 
@@ -162,12 +162,12 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         if 'img_metas' in kwargs:
             img_metas = kwargs.pop('img_metas')
         if return_loss:
-            if 'labels' not in kwargs:
+            if 'label' not in kwargs:
                 raise ValueError('Label should not be None.')
             return self.forward_train(img_metas=img_metas, **kwargs)
         else:
-            if 'labels' in kwargs:
-                kwargs.pop('labels')
+            if 'label' in kwargs:
+                kwargs.pop('label')
             return self.forward_test(img_metas=img_metas, **kwargs)
 
     def train_step(self, data_batch, optimizer, **kwargs):
