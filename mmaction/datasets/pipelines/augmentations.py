@@ -147,7 +147,7 @@ class MMPad:
             # almost identical
             assert np.abs(real_h_ratio - real_w_ratio) < 1e-2
 
-            if real_h == h:
+            if real_h == results['img_shape'][0]:
                 results['imgs'] = self._pad_imgs(results['imgs'],
                                                  results['img_shape'], (h, w))
             else:
@@ -155,7 +155,7 @@ class MMPad:
                                                  (real_h, real_w),
                                                  (int(h / real_h_ratio),
                                                   int(w / real_w_ratio)))
-        results['img_shape'][0]
+        results['img_shape'] = (h, w)
         return results
 
 
