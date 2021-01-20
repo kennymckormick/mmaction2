@@ -142,7 +142,7 @@ class ResNet3dPoseSlowFast(nn.Module):
         # N x 512 x 8 x 28 x 28
         x_pose = self.pose_path.layer1(x_pose)
         # N x 128 x 24 x 28 x 28
-        x_pose_lateral = self.slow_path.layer2_lateral(x_pose)
+        x_pose_lateral = self.rgb_path.layer2_lateral(x_pose)
         # N x 128 x 8 x 28 x 28
         x_rgb = torch.cat((x_rgb, x_pose_lateral), dim=1)
         # N x 640 x 8 x 28 x 28
@@ -152,7 +152,7 @@ class ResNet3dPoseSlowFast(nn.Module):
         # N x 1024 x 8 x 14 x 14
         x_pose = self.pose_path.layer2(x_pose)
         # N x 256 x 24 x 14 x 14
-        x_pose_lateral = self.slow_path.layer3_lateral(x_pose)
+        x_pose_lateral = self.rgb_path.layer3_lateral(x_pose)
         # N x 256 x 8 x 14 x 14
         x_rgb = torch.cat((x_rgb, x_pose_lateral), dim=1)
         # N x 1280 x 8 x 14 x 14

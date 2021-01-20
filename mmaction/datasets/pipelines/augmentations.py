@@ -8,42 +8,6 @@ from torch.nn.modules.utils import _pair
 
 from ..registry import PIPELINES
 
-# Pose related modules include PoseFlip
-
-
-def _init_lazy_if_proper(results, lazy):
-    """Initialize lazy operation properly.
-
-    Make sure that a lazy operation is properly initialized,
-    and avoid a non-lazy operation accidentally getting mixed in.
-
-    Required keys in results are "imgs" if "img_shape" not in results,
-    otherwise, Required keys in results are "img_shape", add or modified keys
-    are "img_shape", "lazy".
-    Add or modified keys in "lazy" are "original_shape", "crop_bbox", "flip",
-    "flip_direction", "interpolation".
-
-    Args:
-        results (dict): A dict stores data pipeline result.
-        lazy (bool): Determine whether to apply lazy operation. Default: False.
-    """
-
-    if 'img_shape' not in results:
-        results['img_shape'] = results['imgs'][0].shape[:2]
-    if lazy:
-        if 'lazy' not in results:
-            img_h, img_w = results['img_shape']
-            lazyop = dict()
-            lazyop['original_shape'] = results['img_shape']
-            lazyop['crop_bbox'] = np.array([0, 0, img_w, img_h],
-                                           dtype=np.float32)
-            lazyop['flip'] = False
-            lazyop['flip_direction'] = None
-            lazyop['interpolation'] = None
-            results['lazy'] = lazyop
-    else:
-        assert 'lazy' not in results, 'Use Fuse after lazy operations'
-
 
 def combine_quadruple(a, b):
     return (a[0] + a[2] * b[0], a[1] + a[3] * b[1], a[2] * b[2], a[3] * b[3])
@@ -51,50 +15,6 @@ def combine_quadruple(a, b):
 
 def flip_quadruple(a):
     return (1 - a[0] - a[2], a[1], a[2], a[3])
-
-
-@PIPELINES.register_module()
-class Fuse(object):
-    """Fuse lazy operations.
-
-    Fusion order:
-        crop -> resize -> flip
-
-    Required keys are "imgs", "img_shape" and "lazy", added or modified keys
-    are "imgs", "lazy".
-    Required keys in "lazy" are "crop_bbox", "interpolation", "flip_direction".
-    """
-
-    def __call__(self, results):
-        if 'lazy' not in results:
-            raise ValueError('No lazy operation detected')
-        lazyop = results['lazy']
-        imgs = results['imgs']
-
-        # crop
-        left, top, right, bottom = lazyop['crop_bbox'].round().astype(int)
-        imgs = [img[top:bottom, left:right] for img in imgs]
-
-        # resize
-        img_h, img_w = results['img_shape']
-        if lazyop['interpolation'] is None:
-            interpolation = 'bilinear'
-        else:
-            interpolation = lazyop['interpolation']
-        imgs = [
-            mmcv.imresize(img, (img_w, img_h), interpolation=interpolation)
-            for img in imgs
-        ]
-
-        # flip
-        if lazyop['flip']:
-            for img in imgs:
-                mmcv.imflip_(img, lazyop['flip_direction'])
-
-        results['imgs'] = imgs
-        del results['lazy']
-
-        return results
 
 
 # We assume that results['kp'] is not empty (all equals to 0)
@@ -370,8 +290,6 @@ class RandomResizedCrop(RandomCrop):
             results (dict): The resulting dict to be modified and passed
                 to the next transform in pipeline.
         """
-        _init_lazy_if_proper(results, self.lazy)
-
         img_h, img_w = results['img_shape']
 
         left, top, right, bottom = self.get_crop_bbox(

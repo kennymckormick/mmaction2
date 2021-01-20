@@ -135,6 +135,10 @@ class PoseDataset(BaseDataset):
         for i, item in enumerate(data):
             if 'filename' in item:
                 item['filename'] = osp.join(self.data_prefix, item['filename'])
+            if 'frame_dir' in item:
+                item['frame_dir'] = osp.join(self.data_prefix,
+                                             item['frame_dir'])
+
             # will do that in prepare_frames, cuz there may be only a
             # 'filename' in annofile
             if 'num_frame' in item:
