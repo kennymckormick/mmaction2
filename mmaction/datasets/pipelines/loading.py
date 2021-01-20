@@ -280,7 +280,6 @@ class MMUniformSampleFrames(UniformSampleFrames):
             else:
                 inds = self._get_train_clips(num_frames, clip_len)
             inds = np.mod(inds, num_frames)
-            inds = inds + (modality == 'RGB')  # RGB offset 1
             results[f'{modality}_inds'] = inds.astype(np.int)
             modalities.append(modality)
         results['clip_len'] = self.clip_len
@@ -418,7 +417,8 @@ class RawFrameDecode(object):
                 y_frame = mmcv.imfrombytes(y_img_bytes, flag='grayscale')
                 imgs.extend([x_frame, y_frame])
             else:
-                raise NotImplementedError
+                raise NotImplementedError('RawFrameDecode: Modality '
+                                          f'{modality} not supported')
         return imgs
 
     def __call__(self, results):
@@ -590,7 +590,7 @@ class MMDecode(DecordInit, DecordDecode, RawFrameDecode, PoseDecode):
 
     # def _decode_rgb(self, frame_dir)
     def __call__(self, results):
-        for mod in results['modalities']:
+        for mod in results['modality']:
             if results[f'{mod}_inds'].ndim != 1:
                 results[f'{mod}_inds'] = np.squeeze(results[f'{mod}_inds'])
             frame_inds = results[f'{mod}_inds']
@@ -607,12 +607,20 @@ class MMDecode(DecordInit, DecordDecode, RawFrameDecode, PoseDecode):
                 results['imgs'] = imgs
             elif mod == 'Pose':
                 assert 'kp' in results
-                assert 'kpscore' in results
+                if 'kpscore' not in results:
+                    kpscore = [
+                        np.ones(kp.shape[:-1], dtype=np.float32)
+                        for kp in results['kp']
+                    ]
+                    results['kpscore'] = kpscore
                 results['kp'] = self._load_kp(results['kp'], frame_inds)
                 results['kpscore'] = self._load_kp(results['kpscore'],
                                                    frame_inds)
             else:
-                raise NotImplementedError
+                raise NotImplementedError(f'MMDecode: Modality {mod} not '
+                                          'supported')
+
+        return results
 
 
 @PIPELINES.register_module()

@@ -162,12 +162,12 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         if 'img_metas' in kwargs:
             img_metas = kwargs.pop('img_metas')
         if return_loss:
-            if 'label' not in kwargs:
+            if 'labels' not in kwargs:
                 raise ValueError('Label should not be None.')
             return self.forward_train(img_metas=img_metas, **kwargs)
         else:
-            if 'label' in kwargs:
-                kwargs.pop('label')
+            if 'labels' in kwargs:
+                kwargs.pop('labels')
             return self.forward_test(img_metas=img_metas, **kwargs)
 
     def train_step(self, data_batch, optimizer, **kwargs):

@@ -234,48 +234,67 @@ class FormatShape(object):
             results (dict): The resulting dict to be modified and passed
                 to the next transform in pipeline.
         """
-        imgs = results['imgs']
         # [M x H x W x C]
         # M = 1 * N_crops * N_clips * L
         if self.input_format == 'NCTHW':
-            num_clips = results['num_clips']
-            clip_len = results['clip_len']
+            if 'imgs' in results:
+                imgs = results['imgs']
+                num_clips = results['num_clips']
+                clip_len = results['clip_len']
+                if isinstance(clip_len, dict):
+                    clip_len = clip_len['RGB']
 
-            imgs = imgs.reshape((-1, num_clips, clip_len) + imgs.shape[1:])
-            # N_crops x N_clips x L x H x W x C
-            imgs = np.transpose(imgs, (0, 1, 5, 2, 3, 4))
-            # N_crops x N_clips x C x L x H x W
-            imgs = imgs.reshape((-1, ) + imgs.shape[2:])
-            # M' x C x L x H x W
-            # M' = N_crops x N_clips
+                imgs = imgs.reshape((-1, num_clips, clip_len) + imgs.shape[1:])
+                # N_crops x N_clips x L x H x W x C
+                imgs = np.transpose(imgs, (0, 1, 5, 2, 3, 4))
+                # N_crops x N_clips x C x L x H x W
+                imgs = imgs.reshape((-1, ) + imgs.shape[2:])
+                # M' x C x L x H x W
+                # M' = N_crops x N_clips
+                results['imgs'] = imgs
+                results['input_shape'] = imgs.shape
+
+            if 'heatmap_imgs' in results:
+                imgs = results['heatmap_imgs']
+                num_clips = results['num_clips']
+                clip_len = results['clip_len']
+                # clip_len must be a dict
+                clip_len = clip_len['Pose']
+
+                imgs = imgs.reshape((-1, num_clips, clip_len) + imgs.shape[1:])
+                # N_crops x N_clips x L x H x W x C
+                imgs = np.transpose(imgs, (0, 1, 5, 2, 3, 4))
+                # N_crops x N_clips x C x L x H x W
+                imgs = imgs.reshape((-1, ) + imgs.shape[2:])
+                # M' x C x L x H x W
+                # M' = N_crops x N_clips
+                results['heatmap_imgs'] = imgs
+                results['heatmap_input_shape'] = imgs.shape
+
         elif self.input_format == 'NCHW':
-            imgs = np.transpose(imgs, (0, 3, 1, 2))
-            # M x C x H x W
+            if 'imgs' in results:
+                imgs = results['imgs']
+                imgs = np.transpose(imgs, (0, 3, 1, 2))
+                # M x C x H x W
+                results['imgs'] = imgs
+                results['input_shape'] = imgs.shape
         elif self.input_format == 'NCHW_Flow':
-            num_clips = results['num_clips']
-            clip_len = results['clip_len']
-            imgs = imgs.reshape((-1, num_clips, clip_len) + imgs.shape[1:])
-            # N_crops x N_clips x L x H x W x C
-            imgs = np.transpose(imgs, (0, 1, 2, 5, 3, 4))
-            # N_crops x N_clips x L x C x H x W
-            imgs = imgs.reshape((-1, imgs.shape[2] * imgs.shape[3]) +
-                                imgs.shape[4:])
-            # M' x C' x H x W
-            # M' = N_crops x N_clips
-            # C' = L x C
-        elif self.input_format == 'NPTCHW':
-            num_proposals = results['num_proposals']
-            num_clips = results['num_clips']
-            clip_len = results['clip_len']
-            imgs = imgs.reshape((num_proposals, num_clips * clip_len) +
-                                imgs.shape[1:])
-            # P x M x H x W x C
-            # M = N_clips x L
-            imgs = np.transpose(imgs, (0, 1, 4, 2, 3))
-            # P x M x C x H x W
+            if 'imgs' in results:
+                imgs = results['imgs']
+                num_clips = results['num_clips']
+                clip_len = results['clip_len']
+                imgs = imgs.reshape((-1, num_clips, clip_len) + imgs.shape[1:])
+                # N_crops x N_clips x L x H x W x C
+                imgs = np.transpose(imgs, (0, 1, 2, 5, 3, 4))
+                # N_crops x N_clips x L x C x H x W
+                imgs = imgs.reshape((-1, imgs.shape[2] * imgs.shape[3]) +
+                                    imgs.shape[4:])
+                # M' x C' x H x W
+                # M' = N_crops x N_clips
+                # C' = L x C
+                results['imgs'] = imgs
+                results['input_shape'] = imgs.shape
 
-        results['imgs'] = imgs
-        results['input_shape'] = imgs.shape
         return results
 
     def __repr__(self):

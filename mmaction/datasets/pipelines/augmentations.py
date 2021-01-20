@@ -134,10 +134,29 @@ class MMPad:
             h = max(self.hw_ratio[0] * w, h)
             w = max(1 / self.hw_ratio[1] * h, w)
         h, w = int(h), int(w)
-        results['kp'] = self._pad_kps(results['kp'], results['img_shape'],
-                                      (h, w))
-        results['imgs'] = self._pad_imgs(results['imgs'], results['img_shape'],
-                                         (h, w))
+        if 'kp' in results:
+            results['kp'] = self._pad_kps(results['kp'], results['img_shape'],
+                                          (h, w))
+        # img_shape should be: if not identical to results['img_shape'],
+        # at least propotional, just a patch here
+        if 'imgs' in results:
+            real_img_shape = results['imgs'][0].shape[:2]
+            real_h, real_w = real_img_shape
+            real_h_ratio = results['img_shape'][0] / real_h
+            real_w_ratio = results['img_shape'][1] / real_w
+            # almost identical
+            assert np.abs(real_h_ratio - real_w_ratio) < 1e-2
+
+            if real_h == h:
+                results['imgs'] = self._pad_imgs(results['imgs'],
+                                                 results['img_shape'], (h, w))
+            else:
+                results['imgs'] = self._pad_imgs(results['imgs'],
+                                                 (real_h, real_w),
+                                                 (int(h / real_h_ratio),
+                                                  int(w / real_w_ratio)))
+        results['img_shape'][0]
+        return results
 
 
 @PIPELINES.register_module()
@@ -341,7 +360,7 @@ class Resize:
             "nearest" | "bilinear". Default: "bilinear".
     """
 
-    def __init__(self, scale, keep_ratio=True, interpolation='bilinear'):
+    def __init__(self, scale, keep_ratio=False, interpolation='bilinear'):
         if isinstance(scale, float):
             if scale <= 0:
                 raise ValueError(f'Invalid scale {scale}, must be positive.')
@@ -415,12 +434,14 @@ class Resize:
         results['img_shape'] = (new_h, new_w)
         results['keep_ratio'] = self.keep_ratio
         results['scale_factor'] = results['scale_factor'] * self.scale_factor
+        modality = results['modality']
 
         if 'kp' in results:
             results['kp'] = self._resize_kps(results['kp'], self.scale_factor)
 
         if 'imgs' in results:
-            results['imgs'] = self._resize_imgs(results['imgs'])
+            results['imgs'] = self._resize_imgs(results['imgs'], new_w, new_h,
+                                                modality)
 
         return results
 
@@ -506,7 +527,7 @@ class Flip:
         self.direction = 'horizontal'
 
     def _flip_imgs(self, imgs, modality):
-        _ = [mmcv.imfilp_(img, self.direction) for img in imgs]
+        _ = [mmcv.imflip_(img, self.direction) for img in imgs]
         lt = len(imgs)
         if modality == 'Flow':
             # 1st Frame of each 2 frames is flow-x

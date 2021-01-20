@@ -6,7 +6,8 @@ from .formating import (Collect, FormatShape, ImageToTensor, ToDataContainer,
                         ToTensor, Transpose)
 from .loading import (ConvertCompactHeatmap, DecordDecode, DecordInit,
                       FrameSelector, GeneratePoseTarget, Heatmap2Potion,
-                      LoadFile, LoadKineticsPose, PoseDecode, PoTionDecode,
+                      LoadFile, LoadKineticsPose, MMDecode,
+                      MMUniformSampleFrames, PoseDecode, PoTionDecode,
                       RawFrameDecode, RawRGBFlowDecode, SampleFrames,
                       UniformSampleFrames)
 
@@ -18,5 +19,5 @@ __all__ = [
     'DecordInit', 'RawRGBFlowDecode', 'GeneratePoseTarget', 'PoseDecode',
     'LoadKineticsPose', 'PoseCompact', 'RandomRescale', 'Heatmap2Potion',
     'UniformSampleFrames', 'PoTionDecode', 'ConvertCompactHeatmap',
-    'HeatmapFlipTest', 'LoadFile'
+    'HeatmapFlipTest', 'LoadFile', 'MMUniformSampleFrames', 'MMDecode'
 ]
