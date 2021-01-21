@@ -145,7 +145,7 @@ class MMPad:
             real_h_ratio = results['img_shape'][0] / real_h
             real_w_ratio = results['img_shape'][1] / real_w
             # almost identical
-            assert np.abs(real_h_ratio - real_w_ratio) < 1e-2
+            assert np.abs(real_h_ratio - real_w_ratio) < 2e-2
 
             if real_h == results['img_shape'][0]:
                 results['imgs'] = self._pad_imgs(results['imgs'],
@@ -370,6 +370,8 @@ class Resize:
             if max_short_edge == -1:
                 # assign np.inf to long edge for rescaling short edge later.
                 scale = (np.inf, max_long_edge)
+                # Then we automatically set keep_ratio as True
+                keep_ratio = True
         else:
             raise TypeError(
                 f'Scale must be float or tuple of int, but got {type(scale)}')
