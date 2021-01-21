@@ -67,9 +67,10 @@ class MMRecognizer3D(BaseRecognizer):
 
         for k in cls_scores:
             cls_score = self.average_clip(cls_scores[k], num_segs)
-            cls_scores[k] = cls_score.data.cpu().numpy()
+            cls_scores[k] = cls_score.data.cpu().numpy()[0]
 
-        return cls_scores
+        # cuz we use extend for accumulation
+        return [cls_scores]
 
     def forward_dummy(self, imgs):
         imgs = imgs.reshape((-1, ) + imgs.shape[2:])
