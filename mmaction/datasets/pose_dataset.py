@@ -238,11 +238,11 @@ class PoseDataset(BaseDataset):
                         eval_results[f'{key}_mean_class_accuracy'] = mean_acc
                         log_msg = f'\n{key}_mean_acc\t{mean_acc:.4f}'
                         print_log(log_msg, logger=logger)
-                    else:
-                        mean_acc = mean_class_accuracy(results, gt_labels)
-                        eval_results['mean_class_accuracy'] = mean_acc
-                        log_msg = f'\nmean_acc\t{mean_acc:.4f}'
-                        print_log(log_msg, logger=logger)
+                else:
+                    mean_acc = mean_class_accuracy(results, gt_labels)
+                    eval_results['mean_class_accuracy'] = mean_acc
+                    log_msg = f'\nmean_acc\t{mean_acc:.4f}'
+                    print_log(log_msg, logger=logger)
                 continue
 
         return eval_results
