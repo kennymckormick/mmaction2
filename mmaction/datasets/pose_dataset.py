@@ -234,7 +234,7 @@ class PoseDataset(BaseDataset):
                 if isinstance(results[0], dict):
                     for key in results[0]:
                         key_results = [result[key] for result in results]
-                        mean_acc = mean_class_accuracy(results, gt_labels)
+                        mean_acc = mean_class_accuracy(key_results, gt_labels)
                         eval_results[f'{key}_mean_class_accuracy'] = mean_acc
                         log_msg = f'\n{key}_mean_acc\t{mean_acc:.4f}'
                         print_log(log_msg, logger=logger)
