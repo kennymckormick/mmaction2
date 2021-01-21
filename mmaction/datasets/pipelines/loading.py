@@ -1023,7 +1023,7 @@ class GeneratePoseTarget(object):
             with_kp=True,
             with_limb=False,
             # scale the size of generated kp heatmap
-            scaling=0.25,
+            scaling=1.,
             left=[],
             right=[],
             skeletons=[],
