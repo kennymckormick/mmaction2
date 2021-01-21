@@ -185,7 +185,7 @@ class UniformSampleFrames:
         self.clip_len = clip_len
         self.num_clips = num_clips
         self.test_mode = test_mode
-        self.random_seed = seed
+        self.seed = seed
 
     def _get_train_clips(self, num_frames, clip_len):
         assert self.num_clips == 1
