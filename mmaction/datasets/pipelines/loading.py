@@ -347,7 +347,11 @@ class DecordDecode(object):
         pass
 
     def _decord_load_frames(self, container, inds):
-        frame_dict = {idx: container[idx].asnumpy() for idx in np.unique(inds)}
+        # very interesting, for some videos, the #channel is 4
+        frame_dict = {
+            idx: container[idx].asnumpy()[:, :, :3]
+            for idx in np.unique(inds)
+        }
         imgs = [frame_dict[idx] for idx in inds]
         return imgs
 
