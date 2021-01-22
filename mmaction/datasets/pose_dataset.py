@@ -49,7 +49,8 @@ class PoseDataset(BaseDataset):
 
     def __init__(self, ann_file, pipeline, **kwargs):
         additional_args = [
-            'valid_ratio', 'valid_frame', 'byfreq', 'power', 'valid_norm_range'
+            'valid_ratio', 'valid_frame', 'byfreq', 'power',
+            'valid_norm_range', 'filename_tmpl'
         ]
         add_kwargs = {}
         for arg in additional_args:
@@ -76,6 +77,10 @@ class PoseDataset(BaseDataset):
             self.video_infos = [
                 x for x in self.video_infos if x['num_valid'] >= valid_frame
             ]
+
+        self.filename_tmpl = 'img_{:05d}.jpg'
+        if 'filename_tmpl' in add_kwargs:
+            self.filename_tmpl = add_kwargs['filename_tmpl']
 
         logger = get_root_logger()
         logger.info(f'{len(self)} videos remain after valid thresholding')
@@ -152,6 +157,7 @@ class PoseDataset(BaseDataset):
         #     results.update(mmcv.load(results['filename']))
         results['modality'] = self.modality
         results['start_index'] = self.start_index
+        results['filename_tmpl'] = self.filename_tmpl
         return self.pipeline(results)
 
     def prepare_test_frames(self, idx):
@@ -161,6 +167,7 @@ class PoseDataset(BaseDataset):
         #     results.update(mmcv.load(results['filename']))
         results['modality'] = self.modality
         results['start_index'] = self.start_index
+        results['filename_tmpl'] = self.filename_tmpl
         return self.pipeline(results)
 
     def evaluate(self,
