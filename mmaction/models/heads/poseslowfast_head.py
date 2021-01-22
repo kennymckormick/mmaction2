@@ -35,6 +35,10 @@ class PoseSlowFastHead(BaseHead):
 
         super().__init__(num_classes, in_channels, loss_cls, **kwargs)
         self.spatial_type = spatial_type
+        if isinstance(dropout_ratio, float):
+            dropout_ratio = {'rgb': dropout_ratio, 'pose': dropout_ratio}
+        assert isinstance(dropout_ratio, dict)
+
         self.dropout_ratio = dropout_ratio
         self.init_std = init_std
         self.in_channels = in_channels
@@ -44,10 +48,9 @@ class PoseSlowFastHead(BaseHead):
         assert len(loss_weights) == len(loss_components)
         self.loss_weights = loss_weights
 
-        if self.dropout_ratio != 0:
-            self.dropout = nn.Dropout(p=self.dropout_ratio)
-        else:
-            self.dropout = None
+        self.dropout_rgb = nn.Dropout(p=self.dropout_ratio['rgb'])
+        self.dropout_pose = nn.Dropout(p=self.dropout_ratio['pose'])
+
         self.fc_rgb = nn.Linear(in_channels[0], num_classes)
         self.fc_pose = nn.Linear(in_channels[1], num_classes)
         self.fc_both = nn.Linear(in_channels[0] + in_channels[1], num_classes)
@@ -76,9 +79,8 @@ class PoseSlowFastHead(BaseHead):
         x_rgb = x_rgb.view(x_rgb.size(0), -1)
         x_pose = x_pose.view(x_pose.size(0), -1)
 
-        if self.dropout is not None:
-            x_rgb = self.dropout(x_rgb)
-            x_pose = self.dropout(x_pose)
+        x_rgb = self.dropout_rgb(x_rgb)
+        x_pose = self.dropout_pose(x_pose)
 
         x_both = torch.cat((x_rgb, x_pose), dim=1)
         cls_scores = {}
