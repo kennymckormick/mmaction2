@@ -662,10 +662,12 @@ class LoadKineticsPose(object):
                  io_backend='disk',
                  squeeze=True,
                  kp2keep=None,
+                 kpscore_thre=0,
                  **kwargs):
         self.io_backend = io_backend
         self.squeeze = squeeze
         self.kp2keep = kp2keep
+        self.kpscore_thre = kpscore_thre
         self.kwargs = kwargs
         self.file_client = None
 
@@ -719,7 +721,10 @@ class LoadKineticsPose(object):
 
         for frame_ind, person_ind, kp in zip(frame_inds, person_inds, kps):
             new_kp[person_ind, frame_ind] = kp[:, :2]
-            new_kpscore[person_ind, frame_ind] = kp[:, 2]
+            kpscore = kp[:, 2]
+            # Apply kpscore threshold
+            kpscore[kpscore < self.kpscore_thre] = 0.
+            new_kpscore[person_ind, frame_ind] = kpscore
 
         data['kp'] = new_kp
         data['kpscore'] = new_kpscore
