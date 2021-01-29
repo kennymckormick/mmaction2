@@ -9,7 +9,7 @@ from .loading import (ConvertCompactHeatmap, DecordDecode, DecordInit,
                       LoadFile, LoadKineticsPose, MMDecode,
                       MMUniformSampleFrames, PoseDecode, PoTionDecode,
                       RawFrameDecode, RawRGBFlowDecode, SampleFrames,
-                      UniformSampleFrames)
+                      UniformSampleFrames, WeightedUniformSampleFrames)
 
 __all__ = [
     'SampleFrames', 'DecordDecode', 'FrameSelector', 'RandomResizedCrop',
@@ -19,5 +19,6 @@ __all__ = [
     'DecordInit', 'RawRGBFlowDecode', 'GeneratePoseTarget', 'PoseDecode',
     'LoadKineticsPose', 'PoseCompact', 'RandomRescale', 'Heatmap2Potion',
     'UniformSampleFrames', 'PoTionDecode', 'ConvertCompactHeatmap',
-    'HeatmapFlipTest', 'LoadFile', 'MMUniformSampleFrames', 'MMDecode'
+    'HeatmapFlipTest', 'LoadFile', 'MMUniformSampleFrames', 'MMDecode',
+    'WeightedUniformSampleFrames'
 ]

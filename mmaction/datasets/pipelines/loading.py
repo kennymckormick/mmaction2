@@ -266,6 +266,100 @@ class UniformSampleFrames:
 
 
 @PIPELINES.register_module()
+class WeightedUniformSampleFrames(UniformSampleFrames):
+    # Only works for OpenPose-18P
+    def __init__(self,
+                 face=0.1,
+                 torso=0.2,
+                 limb=0.3,
+                 mppolicy='max',
+                 **kwargs):
+        super(WeightedUniformSampleFrames, self).__init__(**kwargs)
+        self.weights = dict(face=face, torso=torso, limb=limb)
+        self.mppolicy = mppolicy
+        assert self.mppolicy in ['max', 'mean'] or \
+            isinstance(self.mppolicy, float)
+        self.kpsubset = dict(
+            torso=[0, 1, 2, 8, 5, 11],
+            limb=[3, 4, 6, 7, 9, 10, 12, 13],
+            face=[14, 15, 16, 17])
+
+    def _get_segments(self, kpscore, clip_len):
+        face = self.kpsubset['face']
+        torso = self.kpsubset['torso']
+        limb = self.kpsubset['limb']
+        score = np.sum(kpscore[..., face], axis=-1) * self.weights['face'] + \
+            np.sum(kpscore[..., torso], axis=-1) * self.weights['torso'] + \
+            np.sum(kpscore[..., limb], axis=-1) * self.weights['limb']
+        if self.mppolicy == 'max':
+            score = np.max(score, axis=0)
+        elif self.mppolicy == 'mean':
+            score = np.mean(score, axis=0)
+        elif isinstance(self.mppolicy, float):
+            max_score = np.max(score, axis=0)
+            num_person = np.sum(max_score > 0.01, axis=0)
+            num_person -= 1
+            score = max_score * (1 + num_person / 10.)
+        # This is score used for sampling
+        end = np.zeros(clip_len + 1, dtype=np.int32)
+        end_value = np.zeros(clip_len + 1)
+        score_bin = np.sum(score) / clip_len
+        ptr, summ = 1, 0
+        for i in range(len(score)):
+            summ += score[i]
+            if summ > (ptr * score_bin):
+                end[ptr] = i
+                end_value[ptr] = summ
+                ptr += 1
+        end[ptr] = i + 1
+        end_value[ptr] = summ
+        return end, score
+
+    def _get_clips_given_segments(self, end, score, mode='train'):
+        if mode == 'test':
+            np.random.seed(self.seed)
+        lt = len(end) - 1
+        indices = []
+        for i in range(lt):
+            ind_range = list(range(end[i], end[i + 1]))
+            prob = score[end[i]:end[i + 1]]
+            prob = prob / np.sum(prob)
+            inds = np.random.choice(
+                ind_range, size=self.num_clips, replace=True, p=prob)
+            indices.append(inds)
+        indices = np.stack(indices).T
+        indices = indices.reshape(-1)
+        return indices
+
+    def __call__(self, results):
+        num_frames = results['total_frames']
+        kpscore = results['kpscore']
+        clip_len = self.clip_len
+        end, score = self._get_segments(kpscore, clip_len)
+
+        if self.test_mode:
+            if num_frames <= 2 * self.clip_len:
+                inds = self._get_test_clips(num_frames, self.clip_len)
+            else:
+                inds = self._get_clips_given_segments(end, score, mode='test')
+        else:
+            if num_frames <= 2 * self.clip_len:
+                inds = self._get_train_clips(num_frames, self.clip_len)
+            else:
+                inds = self._get_clips_given_segments(end, score)
+
+        inds = np.mod(inds, num_frames)
+        start_index = results['start_index']
+        inds = inds + start_index
+
+        results['frame_inds'] = inds.astype(np.int)
+        results['clip_len'] = self.clip_len
+        results['frame_interval'] = None
+        results['num_clips'] = self.num_clips
+        return results
+
+
+@PIPELINES.register_module()
 class MMUniformSampleFrames(UniformSampleFrames):
     # Here, clip_len is a dictionary: key: modality_name, value: clip_len
     # We assume it is RGB, Pose & start_index is hardcoded
