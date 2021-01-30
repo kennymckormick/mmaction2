@@ -288,6 +288,7 @@ class WeightedUniformSampleFrames(UniformSampleFrames):
         face = self.kpsubset['face']
         torso = self.kpsubset['torso']
         limb = self.kpsubset['limb']
+        kpscore = kpscore.astype(np.float32)
         score = np.sum(kpscore[..., face], axis=-1) * self.weights['face'] + \
             np.sum(kpscore[..., torso], axis=-1) * self.weights['torso'] + \
             np.sum(kpscore[..., limb], axis=-1) * self.weights['limb']
@@ -307,12 +308,16 @@ class WeightedUniformSampleFrames(UniformSampleFrames):
         ptr, summ = 1, 0
         for i in range(len(score)):
             summ += score[i]
-            if summ > (ptr * score_bin):
+            if summ > ptr * score_bin + 0.01:
                 end[ptr] = i
                 end_value[ptr] = summ
                 ptr += 1
         end[ptr] = i + 1
         end_value[ptr] = summ
+        while ptr < clip_len:
+            ptr += 1
+            end[ptr] = i + 1
+            end_value[ptr] = summ
         return end, score
 
     def _get_clips_given_segments(self, end, score, mode='train'):
@@ -337,13 +342,19 @@ class WeightedUniformSampleFrames(UniformSampleFrames):
         clip_len = self.clip_len
         end, score = self._get_segments(kpscore, clip_len)
 
+        end_legal = True
+        for i in range(clip_len):
+            if end[i] == end[i + 1]:
+                end_legal = False
+                break
+
         if self.test_mode:
-            if num_frames <= 2 * self.clip_len:
+            if num_frames <= 2 * self.clip_len or not end_legal:
                 inds = self._get_test_clips(num_frames, self.clip_len)
             else:
                 inds = self._get_clips_given_segments(end, score, mode='test')
         else:
-            if num_frames <= 2 * self.clip_len:
+            if num_frames <= 2 * self.clip_len or not end_legal:
                 inds = self._get_train_clips(num_frames, self.clip_len)
             else:
                 inds = self._get_clips_given_segments(end, score)
