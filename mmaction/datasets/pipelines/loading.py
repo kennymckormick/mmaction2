@@ -273,10 +273,12 @@ class WeightedUniformSampleFrames(UniformSampleFrames):
                  torso=0.2,
                  limb=0.3,
                  mppolicy='max',
+                 hard_thre=None,
                  **kwargs):
         super(WeightedUniformSampleFrames, self).__init__(**kwargs)
         self.weights = dict(face=face, torso=torso, limb=limb)
         self.mppolicy = mppolicy
+        self.hard_thre = hard_thre
         assert self.mppolicy in ['max', 'mean'] or \
             isinstance(self.mppolicy, float)
         self.kpsubset = dict(
@@ -289,6 +291,8 @@ class WeightedUniformSampleFrames(UniformSampleFrames):
         torso = self.kpsubset['torso']
         limb = self.kpsubset['limb']
         kpscore = kpscore.astype(np.float32)
+        if self.hard_thre is not None:
+            kpscore = kpscore >= self.hard_thre
         score = np.sum(kpscore[..., face], axis=-1) * self.weights['face'] + \
             np.sum(kpscore[..., torso], axis=-1) * self.weights['torso'] + \
             np.sum(kpscore[..., limb], axis=-1) * self.weights['limb']
