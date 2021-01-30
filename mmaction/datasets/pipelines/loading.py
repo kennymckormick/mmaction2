@@ -274,11 +274,13 @@ class WeightedUniformSampleFrames(UniformSampleFrames):
                  limb=0.3,
                  mppolicy='max',
                  hard_thre=None,
+                 remain_score=False,
                  **kwargs):
         super(WeightedUniformSampleFrames, self).__init__(**kwargs)
         self.weights = dict(face=face, torso=torso, limb=limb)
         self.mppolicy = mppolicy
         self.hard_thre = hard_thre
+        self.remain_score = remain_score
         assert self.mppolicy in ['max', 'mean'] or \
             isinstance(self.mppolicy, float)
         self.kpsubset = dict(
@@ -302,9 +304,14 @@ class WeightedUniformSampleFrames(UniformSampleFrames):
             score = np.mean(score, axis=0)
         elif isinstance(self.mppolicy, float):
             max_score = np.max(score, axis=0)
-            num_person = np.sum(max_score > 0.01, axis=0)
-            num_person -= 1
-            score = max_score * (1 + num_person / 10.)
+            if not self.remain_score:
+                num_person = np.sum(max_score > 0.01, axis=0)
+                num_person -= 1
+                score = max_score * (1 + num_person * self.mppolicy)
+            else:
+                sum_score = np.sum(score, axis=0)
+                sum_score = sum_score - max_score
+                score = max_score + self.mppolicy * sum_score
         # This is score used for sampling
         end = np.zeros(clip_len + 1, dtype=np.int32)
         end_value = np.zeros(clip_len + 1)
