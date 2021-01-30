@@ -351,14 +351,20 @@ class WeightedUniformSampleFrames(UniformSampleFrames):
             if end[i] == end[i + 1]:
                 end_legal = False
                 break
+        score_legal = True
+        for i in range(clip_len):
+            if np.sum(score[end[i]:end[i + 1]]) < 0.01:
+                score_legal = False
+                break
+        legal = end_legal and score_legal
 
         if self.test_mode:
-            if num_frames <= 2 * self.clip_len or not end_legal:
+            if num_frames <= 2 * self.clip_len or not legal:
                 inds = self._get_test_clips(num_frames, self.clip_len)
             else:
                 inds = self._get_clips_given_segments(end, score, mode='test')
         else:
-            if num_frames <= 2 * self.clip_len or not end_legal:
+            if num_frames <= 2 * self.clip_len or not legal:
                 inds = self._get_train_clips(num_frames, self.clip_len)
             else:
                 inds = self._get_clips_given_segments(end, score)
