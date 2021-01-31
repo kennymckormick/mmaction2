@@ -410,7 +410,7 @@ class Resize:
                     img, (new_w, new_h), interpolation=self.interpolation)
                 for img in imgs
             ]
-        elif modality in ['RGBFlow', 'PoTion']:
+        elif modality in ['RGBFlow', 'PoTion', 'Heatmap']:
             return [self.nchannel_resize(img, new_w, new_h) for img in imgs]
 
     def __call__(self, results):
@@ -649,7 +649,7 @@ class Normalize:
     def __call__(self, results):
         modality = results['modality']
 
-        if modality in ['RGB', 'RGBFlow'] or 'RGB' in modality:
+        if modality in ['RGB', 'RGBFlow', 'Heatmap'] or 'RGB' in modality:
             n = len(results['imgs'])
             h, w, c = results['imgs'][0].shape
             imgs = np.empty((n, h, w, c), dtype=np.float32)
