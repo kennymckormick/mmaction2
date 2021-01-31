@@ -656,6 +656,8 @@ class PoseDecode(object):
         if len(pose_box) == 1:
             pose_box = [[x] for x in pose_box[0]]
 
+        if isinstance(pose_box[0][0], list):
+            pose_box = [[np.array(box) for box in boxes] for boxes in pose_box]
         return [pose_box[ind] for ind in frame_inds]
 
     def _load_compact_heatmap(self, compact_heatmap, frame_inds):
