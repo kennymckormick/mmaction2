@@ -652,10 +652,18 @@ class PoseDecode(object):
         return [x[frame_inds].astype(np.float32) for x in kpscore]
 
     def _load_pose_box(self, pose_box, frame_inds):
-        return [x[frame_inds].astype(np.float32) for x in pose_box]
+        # which is GYM
+        if len(pose_box) == 1:
+            pose_box = [[x] for x in pose_box[0]]
+
+        return [pose_box[ind] for ind in frame_inds]
 
     def _load_compact_heatmap(self, compact_heatmap, frame_inds):
-        return [[x[ind] for ind in frame_inds] for x in compact_heatmap]
+        # which is GYM
+        if len(compact_heatmap) == 1:
+            compact_heatmap = [[x] for x in compact_heatmap[0]]
+
+        return [compact_heatmap[ind] for ind in frame_inds]
 
     def __call__(self, results):
         """Perform the ``RawFrameDecode`` to pick frames given indices.
@@ -692,12 +700,10 @@ class PoseDecode(object):
             results['kp'] = self._load_kp(results['kp'], frame_inds)
 
         if 'pose_box' in results:
-            assert results['num_person'] == len(results['pose_box'])
             results['pose_box'] = self._load_pose_box(results['pose_box'],
                                                       frame_inds)
 
         if 'compact_heatmap' in results:
-            assert results['num_person'] == len(results['compact_heatmap'])
             results['compact_heatmap'] = self._load_compact_heatmap(
                 results['compact_heatmap'], frame_inds)
 
@@ -1011,24 +1017,26 @@ class ConvertCompactHeatmap:
 
         results['img_shape'] = new_shape
         # May have multiple lists here
-        results['pose_box'] = [scale_factor * x for x in results['pose_box']]
-        results['per_frame_box'] = [
-            scale_factor * x for x in results['per_frame_box']
-        ]
+
+        results['pose_box'] = [[scale_factor * box for box in pose_boxes]
+                               for pose_boxes in results['pose_box']]
 
         new_heatmaps = []
-        num_frame = results['pose_box'][0].shape[0]
+        num_frame = len(results['pose_box'])
+        # The 1st frame, the 1st person
         num_joints = len(results['compact_heatmap'][0][0])
         for i in range(num_frame):
             new_heatmaps.append(
                 np.zeros([new_h, new_w, num_joints], dtype=np.float32))
 
-        for i in range(results['num_person']):
-            compact_heatmap = results['compact_heatmap'][i]
-            pose_box = results['pose_box'][i]
-
-            for j in range(num_frame):
-                heatmap, box = compact_heatmap[j], pose_box[j]
+        for j in range(num_frame):
+            # Organized by frame
+            compact_heatmap = results['compact_heatmap'][j]
+            pose_box = results['pose_box'][j]
+            assert len(compact_heatmap) == len(pose_box)
+            # Which person in the frame
+            for i in range(len(pose_box)):
+                heatmap, box = compact_heatmap[i], pose_box[i]
                 num_joints = len(heatmap)
                 # print(num_joints)
                 new_compact_heatmap = self._convert_pose_box(heatmap, box)
