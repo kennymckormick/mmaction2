@@ -974,11 +974,13 @@ class ConvertCompactHeatmap:
                  shortedge=100,
                  compact=False,
                  padding=1. / 4,
+                 pre_scaling=False,
                  hw_ratio=None):
         # The compact operation should be conducted by group
         self.shortedge = shortedge
         self.compact = compact
         self.padding = padding
+        self.pre_scaling = pre_scaling
         if isinstance(hw_ratio, float):
             hw_ratio = (hw_ratio, hw_ratio)
         # We allow imgpad always
@@ -987,6 +989,27 @@ class ConvertCompactHeatmap:
         # If active area is too small, we do not do copmact op
         self.eps = 3e-3
         self.threshold = 10
+
+    # First, we need to do prescaling, it will change img_shape and pose_box
+    def _pre_scaling(self, img_shape, pose_box):
+        min_x, min_y, max_x, max_y = np.Inf, np.Inf, -np.Inf, -np.Inf
+        for boxes in pose_box:
+            for box in boxes:
+                min_x = min(min_x, box[0])
+                min_y = min(min_y, box[1])
+                max_x = max(max_x, box[0] + box[2])
+                max_y = max(max_y, box[1] + box[3])
+        if max_x - min_x > self.threshold and max_y - min_y > self.threshold:
+            min_x, max_x = int(min_x), int(max_x)
+            min_y, max_y = int(min_y), int(max_y)
+            new_shape = (max_y - min_y, max_x - min_x)
+            for boxes in pose_box:
+                for box in boxes:
+                    box[0] -= min_x
+                    box[1] -= min_y
+            return new_shape, pose_box
+        else:
+            return img_shape, pose_box
 
     def _convert_pose_box(self, compact_heatmap, pose_box):
         new_compact_heatmap = []
@@ -1007,6 +1030,12 @@ class ConvertCompactHeatmap:
         return new_compact_heatmap
 
     def __call__(self, results):
+        if self.pre_scaling:
+            img_shape, pose_box = results['img_shape'], results['pose_box']
+            new_shape, new_pose_box = self._pre_scaling(img_shape, pose_box)
+            results['img_shape'] = new_shape
+            results['pose_box'] = new_pose_box
+
         img_shape = results['img_shape']
         old_se = min(img_shape)
         scale_factor = self.shortedge / old_se
