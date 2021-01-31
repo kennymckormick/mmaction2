@@ -384,17 +384,17 @@ class Resize:
         idx, imgs = 0, []
         while idx < num_channels:
             if idx + 3 <= num_channels:
-                img = mmcv.imresize(
+                cur_img = mmcv.imresize(
                     img[:, :, idx:idx + 3], (new_w, new_h),
                     interpolation=self.interpolation)
                 idx += 3
             else:
-                img = mmcv.imresize(
+                cur_img = mmcv.imresize(
                     img[:, :, idx], (new_w, new_h),
                     interpolation=self.interpolation)
-                img = img[..., np.newaxis]
+                cur_img = cur_img[..., np.newaxis]
                 idx += 1
-            imgs.append(img)
+            imgs.append(cur_img)
 
         img = np.concatenate(imgs, axis=2)
         return img
