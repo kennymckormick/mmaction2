@@ -1005,10 +1005,8 @@ class ConvertCompactHeatmap:
             min_x, max_x = int(min_x), int(max_x)
             min_y, max_y = int(min_y), int(max_y)
             new_shape = (max_y - min_y, max_x - min_x)
-            for boxes in pose_box:
-                for box in boxes:
-                    box[0] -= min_x
-                    box[1] -= min_y
+            boxes = [[[box[0] - min_x, box[1] - min_y, box[2], box[3]]
+                      for box in boxes] for boxes in pose_box]
             return new_shape, pose_box
         else:
             return img_shape, pose_box
