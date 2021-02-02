@@ -153,8 +153,9 @@ class PoseDataset(BaseDataset):
     def prepare_train_frames(self, idx):
         """Prepare the frames for training given the index."""
         results = copy.deepcopy(self.video_infos[idx])
-        if 'filename' in results and results['filename'].endswith('.pkl'):
-            results.update(mmcv.load(results['filename']))
+        # The work should be done in LoadKineticsPose
+        # if 'filename' in results and results['filename'].endswith('.pkl'):
+        #     results.update(mmcv.load(results['filename']))
         results['modality'] = self.modality
         results['start_index'] = self.start_index
         results['filename_tmpl'] = self.filename_tmpl
@@ -163,8 +164,9 @@ class PoseDataset(BaseDataset):
     def prepare_test_frames(self, idx):
         """Prepare the frames for testing given the index."""
         results = copy.deepcopy(self.video_infos[idx])
-        if 'filename' in results and results['filename'].endswith('.pkl'):
-            results.update(mmcv.load(results['filename']))
+        # The work should be done in LoadKineticsPose
+        # if 'filename' in results and results['filename'].endswith('.pkl'):
+        #     results.update(mmcv.load(results['filename']))
         results['modality'] = self.modality
         results['start_index'] = self.start_index
         results['filename_tmpl'] = self.filename_tmpl
