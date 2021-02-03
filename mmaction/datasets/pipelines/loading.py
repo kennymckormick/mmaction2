@@ -792,7 +792,7 @@ class LoadKineticsPose(object):
                  io_backend='disk',
                  squeeze=True,
                  kp2keep=None,
-                 max_person=10,
+                 max_person=100,
                  drop_metric=dict(face=1, torso=2, limb=3),
                  **kwargs):
         self.io_backend = io_backend
@@ -871,6 +871,7 @@ class LoadKineticsPose(object):
                 inds = sorted(range(num_person), key=lambda x: -val[x])
                 new_kpscore[:, i] = new_kpscore[inds, i]
                 new_kp[:, i] = new_kp[inds, i]
+            data['num_person'] = self.max_person
 
         data['kp'] = new_kp[:self.max_person]
         data['kpscore'] = new_kpscore[:self.max_person]
