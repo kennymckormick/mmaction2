@@ -792,12 +792,18 @@ class LoadKineticsPose(object):
                  io_backend='disk',
                  squeeze=True,
                  kp2keep=None,
-                 kpscore_thre=0,
+                 max_person=10,
+                 drop_metric=dict(face=1, torso=2, limb=3),
                  **kwargs):
         self.io_backend = io_backend
         self.squeeze = squeeze
         self.kp2keep = kp2keep
-        self.kpscore_thre = kpscore_thre
+        self.max_person = max_person
+        self.drop_metric = drop_metric
+        self.kpsubset = dict(
+            torso=[0, 1, 2, 8, 5, 11],
+            limb=[3, 4, 6, 7, 9, 10, 12, 13],
+            face=[14, 15, 16, 17])
         self.kwargs = kwargs
         self.file_client = None
 
@@ -852,12 +858,22 @@ class LoadKineticsPose(object):
         for frame_ind, person_ind, kp in zip(frame_inds, person_inds, kps):
             new_kp[person_ind, frame_ind] = kp[:, :2]
             kpscore = kp[:, 2]
-            # Apply kpscore threshold
-            kpscore[kpscore < self.kpscore_thre] = 0.
             new_kpscore[person_ind, frame_ind] = kpscore
 
-        data['kp'] = new_kp
-        data['kpscore'] = new_kpscore
+        kpgrp = self.kpsubset
+        metric = self.drop_metric
+        if num_person > self.max_person:
+            for i in range(num_frame):
+                val = new_kpscore[:, i]
+                val = np.sum(val[:, kpgrp['face']], 1) * metric['face'] + \
+                    np.sum(val[:, kpgrp['torso']], 1) * metric['torso'] + \
+                    np.sum(val[:, kpgrp['limb']], 1) * metric['limb']
+                inds = sorted(range(num_person), key=lambda x: -val[x])
+                new_kpscore[:, i] = new_kpscore[inds, i]
+                new_kp[:, i] = new_kp[inds, i]
+
+        data['kp'] = new_kp[:self.max_person]
+        data['kpscore'] = new_kpscore[:self.max_person]
         return data
 
 
