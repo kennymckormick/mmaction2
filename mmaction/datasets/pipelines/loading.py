@@ -8,6 +8,7 @@ import cv2
 import mmcv
 import numpy as np
 from mmcv.fileio import FileClient
+from scipy.stats import mode
 
 from ..registry import PIPELINES
 from .augmentations import Flip
@@ -780,7 +781,7 @@ class LoadFile:
 
 
 @PIPELINES.register_module()
-class LoadKineticsPose(object):
+class LoadKineticsPose:
     """Load and decode pose with given indices.
 
     Required keys are "filename".
@@ -876,6 +877,103 @@ class LoadKineticsPose(object):
         data['kp'] = new_kp[:self.max_person]
         data['kpscore'] = new_kpscore[:self.max_person]
         return data
+
+
+@PIPELINES.register_module()
+class LoadMMKineticsPose(LoadKineticsPose):
+
+    def __init__(self,
+                 io_backend='disk',
+                 squeeze=True,
+                 kp2keep=None,
+                 max_person=10,
+                 drop_metric=dict(face=1, torso=1, limb=1),
+                 **kwargs):
+        super().__init__(
+            io_backend=io_backend,
+            squeeze=squeeze,
+            kp2keep=kp2keep,
+            max_person=max_person,
+            drop_metric=drop_metric,
+            **kwargs)
+
+        self.kpsubset = dict(
+            torso=[5, 6, 11, 12],
+            limb=[7, 8, 9, 10, 13, 14, 15, 16],
+            face=[0, 1, 2, 3, 4])
+
+    def __call__(self, results):
+        assert 'filename' in results
+        filename = results.pop('filename')
+
+        # Which will be added in Dataset
+        assert 'anno_inds' in results
+        anno_inds = results.pop('anno_inds')
+        # box_score is no longer needed
+        _ = results.pop('box_score')
+
+        if self.file_client is None:
+            self.file_client = FileClient(self.io_backend, **self.kwargs)
+
+        bytes = self.file_client.get(filename)
+        data = pickle.loads(bytes)
+        # Only 'kp' in data
+        kps = data['kp']
+        kps = kps[anno_inds]
+
+        def mapinds(inds):
+            uni = np.unique(inds)
+            mapp = {x: i for i, x in enumerate(uni)}
+            inds = [mapp[x] for x in inds]
+            return np.array(inds, dtype=np.int16)
+
+        num_frame = results['num_frame']
+        frame_inds = results.pop('frame_inds')
+        frame_inds = frame_inds[anno_inds]
+
+        if self.squeeze:
+            frame_inds = mapinds(frame_inds)
+            num_frame = np.max(frame_inds) + 1
+
+        results['num_frame'] = num_frame
+        results['total_frames'] = num_frame
+
+        if self.kp2keep is not None:
+            kps = kps[:, self.kp2keep]
+        h, w = results['img_shape']
+
+        num_kp = kps.shape[1]
+
+        num_person = mode(frame_inds)[-1][0]
+        new_kp = np.zeros([num_person, num_frame, num_kp, 2], dtype=np.float16)
+        new_kpscore = np.zeros([num_person, num_frame, num_kp],
+                               dtype=np.float16)
+        num_person_frame = np.zeros([num_frame], dtype=np.int16)
+
+        for frame_ind, kp in zip(frame_inds, kps):
+            person_ind = num_person_frame[frame_ind]
+            new_kp[person_ind, frame_ind] = kp[:, :2]
+            new_kpscore[person_ind, frame_ind] = kp[:, 2]
+            num_person_frame[frame_ind] += 1
+
+        kpgrp = self.kpsubset
+        metric = self.drop_metric
+        if num_person > self.max_person:
+            for i in range(num_frame):
+                np_frame = num_person_frame[i]
+                val = new_kpscore[:np_frame, i]
+
+                val = np.sum(val[:, kpgrp['face']], 1) * metric['face'] + \
+                    np.sum(val[:, kpgrp['torso']], 1) * metric['torso'] + \
+                    np.sum(val[:, kpgrp['limb']], 1) * metric['limb']
+                inds = sorted(range(np_frame), key=lambda x: -val[x])
+                new_kpscore[:np_frame, i] = new_kpscore[inds, i]
+                new_kp[:np_frame, i] = new_kp[inds, i]
+            results['num_person'] = self.max_person
+
+        results['kp'] = new_kp[:self.max_person]
+        results['kpscore'] = new_kpscore[:self.max_person]
+        return results
 
 
 @PIPELINES.register_module()
