@@ -50,7 +50,7 @@ class PoseDataset(BaseDataset):
     def __init__(self, ann_file, pipeline, **kwargs):
         additional_args = [
             'valid_ratio', 'valid_frame', 'byfreq', 'power',
-            'valid_norm_range', 'filename_tmpl'
+            'valid_norm_range', 'filename_tmpl', 'box_thre'
         ]
         add_kwargs = {}
         for arg in additional_args:
@@ -60,15 +60,37 @@ class PoseDataset(BaseDataset):
         super().__init__(
             ann_file, pipeline, start_index=0, modality='Pose', **kwargs)
 
+        # box_thre, which should be a string
+        self.box_thre = None
+        if 'box_thre' in add_kwargs:
+            box_thre = add_kwargs['box_thre']
+            assert box_thre in ['0.5', '0.6', '0.7', '0.8', '0.9']
+            self.box_thre = add_kwargs['box_thre']
+
         # Thresholding Training Examples
         if 'valid_ratio' in add_kwargs:
             ratio = add_kwargs['valid_ratio']
             assert isinstance(ratio, float)
             # Perform thresholding
-            self.video_infos = [
-                x for x in self.video_infos
-                if x['num_valid'] / x['num_frame'] >= ratio
-            ]
+            if self.box_thre is None:
+                self.video_infos = [
+                    x for x in self.video_infos
+                    if x['num_valid'] / x['num_frame'] >= ratio
+                ]
+            else:
+                key = f'valid@{self.box_thre}'
+                self.video_infos = [
+                    x for x in self.video_infos
+                    if x[key] / x['num_frame'] >= ratio
+                ]
+                if self.box_thre != '0.5':
+                    box_thre = float(self.box_thre)
+                    for item in self.video_infos:
+                        inds = [
+                            i for i, score in enumerate(item['box_score'])
+                            if score >= box_thre
+                        ]
+                        item['anno_inds'] = np.array(inds)
 
         if 'valid_frame' in add_kwargs:
             valid_frame = add_kwargs['valid_frame']
