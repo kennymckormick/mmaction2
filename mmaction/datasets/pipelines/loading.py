@@ -961,6 +961,7 @@ class LoadMMKineticsPose(LoadKineticsPose):
 
         kpgrp = self.kpsubset
         metric = self.drop_metric
+        results['num_person'] = num_person
         if num_person > self.max_person:
             for i in range(num_frame):
                 np_frame = num_person_frame[i]
