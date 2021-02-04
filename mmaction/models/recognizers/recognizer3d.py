@@ -8,8 +8,9 @@ from .base import BaseRecognizer
 class Recognizer3D(BaseRecognizer):
     """3D recognizer model framework."""
 
-    def forward_train(self, imgs, labels, **kwargs):
+    def forward_train(self, imgs, label, **kwargs):
         """Defines the computation performed at every call when training."""
+        labels = label
         imgs = imgs.reshape((-1, ) + imgs.shape[2:])
         losses = dict()
 

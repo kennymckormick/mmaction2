@@ -44,9 +44,11 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         # aux_info is the list of tensor names beyond 'imgs' and 'label' which
         # will be used in train_step and val_step, data_batch should contain
         # these tensors
-        self.aux_info = []
-        if train_cfg is not None and 'aux_info' in train_cfg:
-            self.aux_info = train_cfg['aux_info']
+
+        # We will remove it, pass everything to the recognizer in training
+        # self.aux_info = []
+        # if train_cfg is not None and 'aux_info' in train_cfg:
+        #     self.aux_info = train_cfg['aux_info']
         # max_testing_views should be int
         self.max_testing_views = None
         if test_cfg is not None and 'max_testing_views' in test_cfg:
@@ -114,7 +116,7 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         return cls_score
 
     @abstractmethod
-    def forward_train(self, imgs, labels, **kwargs):
+    def forward_train(self, imgs, label, **kwargs):
         """Defines the computation performed at every call when training."""
 
     @abstractmethod
@@ -163,17 +165,19 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
 
         return loss, log_vars
 
-    def forward(self, imgs, label=None, return_loss=True, **kwargs):
+    def forward(self, return_loss=True, **kwargs):
         """Define the computation performed at every call."""
         if kwargs.get('gradcam', False):
             del kwargs['gradcam']
-            return self.forward_gradcam(imgs, **kwargs)
+            return self.forward_gradcam(**kwargs)
+        assert 'imgs' in kwargs
         if return_loss:
-            if label is None:
-                raise ValueError('Label should not be None.')
-            return self.forward_train(imgs, label, **kwargs)
+            assert 'label' in kwargs
+            return self.forward_train(**kwargs)
 
-        return self.forward_test(imgs, **kwargs)
+        # during testing, only 'imgs' should be passed
+        assert len(kwargs) == 1
+        return self.forward_test(**kwargs)
 
     def train_step(self, data_batch, optimizer, **kwargs):
         """The iteration step during training.
@@ -201,15 +205,7 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
                 DDP, it means the batch size on each GPU), which is used for
                 averaging the logs.
         """
-        imgs = data_batch['imgs']
-        label = data_batch['label']
-
-        aux_info = {}
-        for item in self.aux_info:
-            assert item in data_batch
-            aux_info[item] = data_batch[item]
-
-        losses = self(imgs, label, return_loss=True, **aux_info)
+        losses = self(return_loss=True, **data_batch)
 
         loss, log_vars = self._parse_losses(losses)
 
@@ -227,14 +223,7 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         during val epochs. Note that the evaluation after training epochs is
         not implemented with this method, but an evaluation hook.
         """
-        imgs = data_batch['imgs']
-        label = data_batch['label']
-
-        aux_info = {}
-        for item in self.aux_info:
-            aux_info[item] = data_batch[item]
-
-        losses = self(imgs, label, return_loss=True, **aux_info)
+        losses = self(return_loss=True, **data_batch)
 
         loss, log_vars = self._parse_losses(losses)
 
