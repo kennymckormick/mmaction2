@@ -907,8 +907,9 @@ class LoadMMKineticsPose(LoadKineticsPose):
         filename = results.pop('filename')
 
         # Which will be added in Dataset
-        assert 'anno_inds' in results
-        anno_inds = results.pop('anno_inds')
+        anno_inds = None
+        if 'anno_inds' in results:
+            anno_inds = results.pop('anno_inds')
         # box_score is no longer needed
         _ = results.pop('box_score')
 
@@ -919,7 +920,8 @@ class LoadMMKineticsPose(LoadKineticsPose):
         data = pickle.loads(bytes)
         # Only 'kp' in data
         kps = data['kp']
-        kps = kps[anno_inds]
+        if anno_inds is not None:
+            kps = kps[anno_inds]
 
         def mapinds(inds):
             uni = np.unique(inds)
@@ -929,7 +931,8 @@ class LoadMMKineticsPose(LoadKineticsPose):
 
         num_frame = results['num_frame']
         frame_inds = results.pop('frame_inds')
-        frame_inds = frame_inds[anno_inds]
+        if anno_inds is not None:
+            frame_inds = frame_inds[anno_inds]
 
         if self.squeeze:
             frame_inds = mapinds(frame_inds)
