@@ -1343,15 +1343,15 @@ class GeneratePoseTarget(object):
                 continue
 
             st_x = max(int(mu_x - 3 * sigma), 0)
-            ed_x = min(int(mu_x + 3 * sigma) + 2, img_w)
+            ed_x = min(int(mu_x + 3 * sigma) + 1, img_w)
             st_y = max(int(mu_y - 3 * sigma), 0)
-            ed_y = min(int(mu_y + 3 * sigma) + 2, img_h)
+            ed_y = min(int(mu_y + 3 * sigma) + 1, img_h)
             x = np.arange(st_x, ed_x, 1, np.float32)
             y = np.arange(st_y, ed_y, 1, np.float32)
 
             # return an empty heatmap (since not in the image)
             if not (len(x) and len(y)):
-                return heatmap
+                continue
             y = y[:, None]
 
             patch = np.exp(-((x - mu_x)**2 + (y - mu_y)**2) / 2 / sigma**2)
@@ -1378,9 +1378,9 @@ class GeneratePoseTarget(object):
             min_y, max_y = min(start[1], end[1]), max(start[1], end[1])
 
             min_x = max(int(min_x - 3 * sigma), 0)
-            max_x = min(int(max_x + 3 * sigma) + 2, img_w)
+            max_x = min(int(max_x + 3 * sigma) + 1, img_w)
             min_y = max(int(min_y - 3 * sigma), 0)
-            max_y = min(int(max_y + 3 * sigma) + 2, img_h)
+            max_y = min(int(max_y + 3 * sigma) + 1, img_h)
 
             x = np.arange(min_x, max_x, 1, np.float32)
             y = np.arange(min_y, max_y, 1, np.float32)
