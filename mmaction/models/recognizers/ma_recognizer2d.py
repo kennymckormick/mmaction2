@@ -38,6 +38,7 @@ class MARecognizer2D(BaseRecognizer):
         x = self.avg_pool(x)
         x = x.reshape((-1, num_segs) + x.shape[1:])
         x = x.mean(axis=1)
+        x = x.reshape(x.shape[:2])
 
         cls_score = self.cls_head(x)
         # Note: We only keep those in self.attr_names
@@ -77,6 +78,7 @@ class MARecognizer2D(BaseRecognizer):
         x = self.avg_pool(x)
         x = x.reshape((-1, num_segs) + x.shape[1:])
         x = x.mean(axis=1)
+        x = x.reshape(x.shape[:2])
 
         cls_score = self.cls_head(x)
         return cls_score
@@ -112,6 +114,7 @@ class MARecognizer2D(BaseRecognizer):
         x = self.avg_pool(x)
         x = x.reshape((-1, num_segs) + x.shape[1:])
         x = x.mean(axis=1)
+        x = x.reshape(x.shape[:2])
 
         outs = (self.cls_head(x), )
         return outs
