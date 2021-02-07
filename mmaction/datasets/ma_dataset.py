@@ -13,7 +13,7 @@ from .registry import DATASETS
 
 
 @DATASETS.register_module()
-class MultiAttrDataset(BaseDataset):
+class MADataset(BaseDataset):
     """MultiAttrDataset, which supports the recognition tags of multiple
     categories. Accept both video annotation files or rawframe annotation
     files.
@@ -142,6 +142,11 @@ class MultiAttrDataset(BaseDataset):
         for cate_name in self.tag_categories:
             if cate_name not in results:
                 results[cate_name + '_mask'] = 0
+                if self.tag_categories[cate_name] == 'single':
+                    results[cate_name] = -1
+                elif self.tag_categories[cate_name] in ['multi', 'soft']:
+                    num = self.tag_category_nums[cate_name]
+                    results[cate_name] = torch.ones(num) * -1.
                 continue
             else:
                 results[cate_name + '_mask'] = 1
