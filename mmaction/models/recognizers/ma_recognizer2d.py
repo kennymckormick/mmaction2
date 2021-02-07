@@ -111,7 +111,7 @@ class MARecognizer2D(BaseRecognizer):
         # Here we will focus on feature cls
         x = self.avg_pool(x)
         x = x.reshape((-1, num_segs) + x.shape[1:])
-        x = x.mean(axis=1).squeeze(1)
+        x = x.mean(axis=1)
 
         outs = (self.cls_head(x), )
         return outs
