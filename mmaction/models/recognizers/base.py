@@ -172,7 +172,8 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
             return self.forward_gradcam(**kwargs)
         assert 'imgs' in kwargs
         if return_loss:
-            assert 'label' in kwargs
+            # assert 'label' in kwargs
+            # This line is commented, since the name may not be 'label'
             return self.forward_train(**kwargs)
 
         # during testing, only 'imgs' should be passed
