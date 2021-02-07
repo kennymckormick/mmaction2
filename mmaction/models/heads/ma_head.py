@@ -1,3 +1,5 @@
+from abc import ABCMeta
+
 import torch
 import torch.nn as nn
 from mmcv.cnn import normal_init
@@ -6,7 +8,6 @@ from torch.autograd import Function
 from ...core import top_k_accuracy
 from ..builder import build_loss
 from ..registry import HEADS
-from .base import BaseHead
 
 
 class ScaleGrad(Function):
@@ -68,7 +69,7 @@ class MLP(nn.Module):
 
 
 @HEADS.register_module()
-class MAHead(BaseHead):
+class MAHead(nn.Module, metaclass=ABCMeta):
     """Class head for MultiAttribute.
 
     Args:
@@ -91,6 +92,7 @@ class MAHead(BaseHead):
             init_std=0.01,
             **kwargs):
 
+        super().__init__()
         self.in_channels = in_channels
         self.attr_names = attr_names
         self.head_cfg = head_cfg
