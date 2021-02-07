@@ -125,6 +125,8 @@ class MAHead(BaseHead):
             head.init_weights(self.init_std)
 
     def forward(self, x):
+        if self.dropout is not None:
+            x = self.dropout(x)
         ret = {}
         for k in self.attr_names:
             head = self.heads[k]
