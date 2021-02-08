@@ -142,9 +142,9 @@ class MADataset(BaseDataset):
         for cate_name in self.tag_categories:
             if cate_name not in results:
                 results[cate_name + '_mask'] = 0
-                if self.tag_categories[cate_name] == 'single':
+                if self.tag_label_types[cate_name] == 'single':
                     results[cate_name] = -1
-                elif self.tag_categories[cate_name] in ['multi', 'soft']:
+                elif self.tag_label_types[cate_name] in ['multi', 'soft']:
                     num = self.tag_category_nums[cate_name]
                     results[cate_name] = torch.ones(num) * -1.
                 continue
