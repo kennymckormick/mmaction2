@@ -78,6 +78,7 @@ class MADataset(BaseDataset):
                  tag_category_nums,
                  tag_label_types,
                  filename_tmpl=None,
+                 random_pick_multi=False,
                  **kwargs):
         assert len(tag_categories) == len(tag_category_nums)
         self.tag_categories = tag_categories
@@ -94,6 +95,7 @@ class MADataset(BaseDataset):
         }
         self.filename_tmpl = filename_tmpl
         self.num_categories = len(self.tag_categories)
+        self.random_pick_multi = random_pick_multi
 
         self.start_index = kwargs.pop('start_index', 0)
         self.dataset_type = None
@@ -159,9 +161,12 @@ class MADataset(BaseDataset):
             elif self.tag_label_types[cate_name] == 'multi':
                 # Note that the sum for onehot here >= 1.0
                 assert mmcv.is_list_of(label, int)
-                onehot = torch.zeros(self.tag_category_nums[cate_name])
-                onehot[label] = 1.
-                results[cate_name] = onehot
+                if self.random_pick_multi:
+                    results[cate_name] = np.random.choice(label)
+                else:
+                    onehot = torch.zeros(self.tag_category_nums[cate_name])
+                    onehot[label] = 1.
+                    results[cate_name] = onehot
             elif self.tag_label_types[cate_name] == 'soft':
                 assert isinstance(label, np.ndarray)
                 label = label.astype(np.float32)
@@ -223,6 +228,9 @@ class MADataset(BaseDataset):
             gts = [item[cate] for item, f in zip(self.video_infos, valid) if f]
 
             if cate_type == 'multi':
+                if np.random_pick_multi:
+                    continue
+
                 cate_num = self.tag_category_nums[cate]
                 gts = [self.label2array(cate_num, label) for label in gts]
 
