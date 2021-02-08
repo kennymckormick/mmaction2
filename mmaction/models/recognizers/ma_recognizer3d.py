@@ -111,7 +111,7 @@ class MARecognizer3D(BaseRecognizer):
             x: y.reshape(-1).cpu().numpy()
             for x, y in cls_score.items() if x in self.attr_names
         }
-        return cls_score
+        return [cls_score]
 
     def forward_dummy(self, imgs):
         """Used for computing network FLOPs.
