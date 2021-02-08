@@ -75,8 +75,8 @@ class SoftLabelLoss(BaseWeightedLoss):
         assert cls_score.shape == label.shape
         label = label / self.temperature
         cls_score = cls_score / self.temperature
-        cls_score = nn.LogSoftmax()(cls_score)
-        label = nn.Softmax()(label)
+        cls_score = nn.LogSoftmax(dim=1)(cls_score)
+        label = nn.Softmax(dim=1)(label)
         loss = nn.KLDivLoss(reduction='batchmean')(cls_score, label)
         loss = loss * (self.temperature**2)
         return loss
