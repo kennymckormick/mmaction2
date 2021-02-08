@@ -62,7 +62,7 @@ class MLP(nn.Module):
     def init_weights(self, std):
         for m in self.modules():
             if isinstance(m, nn.Linear):
-                normal_init(m, std)
+                normal_init(m, std=std)
             elif isinstance(m, nn.BatchNorm1d):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
@@ -81,16 +81,14 @@ class MAHead(nn.Module, metaclass=ABCMeta):
             the head.
     """
 
-    def __init__(
-            self,
-            attr_names,
-            in_channels,
-            head_cfg=dict(action=dict(layers=[400], scale=1.)),
-            # Will be complicated here
-            loss_cfg=dict(action=dict(type='CrossEntropyLoss')),
-            dropout_ratio=0.4,
-            init_std=0.01,
-            **kwargs):
+    def __init__(self,
+                 attr_names,
+                 in_channels,
+                 head_cfg=dict(action=dict(layers=[400], scale=1.)),
+                 loss_cfg=dict(action=dict(type='CrossEntropyLoss')),
+                 dropout_ratio=0.4,
+                 init_std=0.01,
+                 **kwargs):
 
         super().__init__()
         self.in_channels = in_channels
@@ -149,7 +147,7 @@ class MAHead(nn.Module, metaclass=ABCMeta):
             if score.shape[0] == 0:
                 loss = torch.tensor(.0).cuda()
             else:
-                loss = self.losses[k](cls_score, gt_label)
+                loss = self.losses[k](score, label)
             losses[k + '_loss'] = loss
             losses['loss_cls'] += loss
 
@@ -158,8 +156,8 @@ class MAHead(nn.Module, metaclass=ABCMeta):
                                            label.detach().cpu().numpy(),
                                            (1, 5))
                 losses[k + '_top1_acc'] = torch.tensor(
-                    top_k_acc[0], device=cls_score.device)
+                    top_k_acc[0], device=score.device)
                 losses[k + '_top5_acc'] = torch.tensor(
-                    top_k_acc[1], device=cls_score.device)
+                    top_k_acc[1], device=score.device)
 
         return losses
