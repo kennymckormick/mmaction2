@@ -105,7 +105,13 @@ class MARecognizer3D(BaseRecognizer):
     def forward_test(self, imgs):
         """Defines the computation performed at every call when evaluation and
         testing."""
-        return self._do_test(imgs).cpu().numpy()
+        cls_score = self._do_test(imgs)
+        # We cvt each score to a 1d array
+        cls_score = {
+            x: y.reshape(-1).cpu().numpy()
+            for x, y in cls_score.items() if x in self.attr_names
+        }
+        return cls_score
 
     def forward_dummy(self, imgs):
         """Used for computing network FLOPs.
