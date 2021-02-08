@@ -219,18 +219,17 @@ class MADataset(BaseDataset):
         eval_results = OrderedDict()
         for cate in self.tag_categories:
             cate_type = self.tag_label_types[cate]
-            if cate_type == 'soft':
-                continue
 
             valid = [(cate in x) for x in self.video_infos]
 
             preds = [result[cate] for result, f in zip(results, valid) if f]
             gts = [item[cate] for item, f in zip(self.video_infos, valid) if f]
 
-            if cate_type == 'multi':
-                if np.random_pick_multi:
-                    continue
+            # Will Return Top-1 and Top-5
+            if cate_type == 'soft':
+                gts = [np.argmax(x) for x in gts]
 
+            if cate_type == 'multi':
                 cate_num = self.tag_category_nums[cate]
                 gts = [self.label2array(cate_num, label) for label in gts]
 
@@ -238,7 +237,7 @@ class MADataset(BaseDataset):
                 eval_results[f'{cate}_mAP'] = mAP
                 log_msg = f'\n{cate}_mAP\t{mAP:.4f}'
                 print_log(log_msg, logger=logger)
-            elif cate_type == 'single':
+            elif cate_type in ['soft', 'single']:
                 topk = (1, 5)
                 top_k_acc = top_k_accuracy(preds, gts, topk)
                 log_msg = []
