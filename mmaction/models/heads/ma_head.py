@@ -135,7 +135,6 @@ class MAHead(nn.Module, metaclass=ABCMeta):
 
     def loss(self, cls_score, gt_label, mask):
         losses = dict()
-        losses['loss_cls'] = torch.tensor(.0).cuda()
         for k in self.attr_names:
             score = cls_score[k]
             label = gt_label[k]
@@ -149,7 +148,6 @@ class MAHead(nn.Module, metaclass=ABCMeta):
             else:
                 loss = self.losses[k](score, label)
             losses[k + '_loss'] = loss
-            losses['loss_cls'] += loss
 
             if len(label.shape) == 1:
                 top_k_acc = top_k_accuracy(score.detach().cpu().numpy(),
