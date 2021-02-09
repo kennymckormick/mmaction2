@@ -57,6 +57,7 @@ class EvalHook(Hook):
 
     def __init__(self,
                  dataloader,
+                 hook_name=None,
                  start=None,
                  interval=1,
                  by_epoch=True,
@@ -85,6 +86,7 @@ class EvalHook(Hook):
                 f'use 0 instead', UserWarning)
             start = 0
         self.dataloader = dataloader
+        self.hook_name = hook_name
         self.interval = interval
         self.start = start
         self.by_epoch = by_epoch
@@ -236,6 +238,8 @@ class EvalHook(Hook):
             runner (:obj:`mmcv.Runner`): The underlined training runner.
             results (list): Output results.
         """
+        if self.hook_name is not None:
+            runner.logger.info(f'Output from EvalHook {self.hook_name}:')
         eval_res = self.dataloader.dataset.evaluate(
             results, logger=runner.logger, **self.eval_kwargs)
         for name, val in eval_res.items():
@@ -293,6 +297,7 @@ class DistEvalHook(EvalHook):
 
     def __init__(self,
                  dataloader,
+                 hook_name=None,
                  start=None,
                  interval=1,
                  by_epoch=True,
@@ -303,6 +308,7 @@ class DistEvalHook(EvalHook):
                  **eval_kwargs):
         super().__init__(
             dataloader,
+            hook_name=hook_name,
             start=start,
             interval=interval,
             by_epoch=by_epoch,

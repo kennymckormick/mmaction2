@@ -135,19 +135,26 @@ def train_model(model,
 
     if validate:
         eval_cfg = cfg.get('evaluation', {})
-        val_dataset = build_dataset(cfg.data.val, dict(test_mode=True))
-        dataloader_setting = dict(
-            videos_per_gpu=cfg.data.get('videos_per_gpu', 1),
-            workers_per_gpu=cfg.data.get('workers_per_gpu', 1),
-            # cfg.gpus will be ignored if distributed
+        loader_setting = dict(
+            videos_per_gpu=1,
+            workers_per_gpu=2,
             num_gpus=len(cfg.gpu_ids),
             dist=distributed,
             shuffle=False)
-        dataloader_setting = dict(dataloader_setting,
-                                  **cfg.data.get('val_dataloader', {}))
-        val_dataloader = build_dataloader(val_dataset, **dataloader_setting)
-        eval_hook = DistEvalHook if distributed else EvalHook
-        runner.register_hook(eval_hook(val_dataloader, **eval_cfg))
+        loader_setting = dict(loader_setting,
+                              **cfg.data.get('val_dataloader', {}))
+        if not isinstance(cfg.data.val, dict):
+            val_dataset = build_dataset(cfg.data.val, dict(test_mode=True))
+            val_loader = build_dataloader(val_dataset, **loader_setting)
+            eval_hook = DistEvalHook if distributed else EvalHook
+            runner.register_hook(eval_hook(val_loader, **eval_cfg))
+        else:
+            for k, v in cfg.data.val.items():
+                val_dataset = build_dataset(v, dict(test_mode=True))
+                val_loader = build_dataloader(val_dataset, **loader_setting)
+                eval_hook = DistEvalHook if distributed else EvalHook
+                runner.register_hook(
+                    eval_hook(val_loader, hook_name=k, **eval_cfg))
 
     if cfg.resume_from:
         runner.resume(cfg.resume_from)
@@ -159,25 +166,40 @@ def train_model(model,
     runner.run(data_loaders, cfg.workflow, cfg.total_epochs, **runner_kwargs)
 
     if test:
-        test_dataset = build_dataset(cfg.data.test, dict(test_mode=True))
-        dataloader_setting = dict(
+        eval_cfg = cfg.get('evaluation', {})
+        if 'interval' in eval_cfg:
+            eval_cfg.pop('interval')
+        loader_setting = dict(
             videos_per_gpu=1,
-            workers_per_gpu=4,
+            workers_per_gpu=2,
             num_gpus=len(cfg.gpu_ids),
             dist=distributed,
             shuffle=False)
-        test_dataloader = build_dataloader(test_dataset, **dataloader_setting)
-        outputs = multi_gpu_test(model, test_dataloader,
-                                 osp.join(cfg.work_dir, 'tmp'), False)
+        loader_setting = dict(loader_setting,
+                              **cfg.data.get('test_dataloader', {}))
         rank, _ = get_dist_info()
-        if rank == 0:
-            out = osp.join(cfg.work_dir, 'final_pred.pkl')
-            test_dataset.dump_results(outputs, out)
-
-            eval_cfg = cfg.get('evaluation', {})
-            if 'interval' in eval_cfg:
-                eval_cfg.pop('interval')
-
-            eval_res = test_dataset.evaluate(outputs, **eval_cfg)
-            for name, val in eval_res.items():
-                print(f'{name}: {val:.04f}')
+        if not isinstance(cfg.data.test, dict):
+            test_dataset = build_dataset(cfg.data.test, dict(test_mode=True))
+            test_loader = build_dataloader(test_dataset, **loader_setting)
+            outputs = multi_gpu_test(model, test_loader,
+                                     osp.join(cfg.work_dir, 'tmp'), False)
+            if rank == 0:
+                out = osp.join(cfg.work_dir, 'final_pred.pkl')
+                test_dataset.dump_results(outputs, out)
+                eval_res = test_dataset.evaluate(outputs, **eval_cfg)
+                for name, val in eval_res.items():
+                    runner.logger.info(f'{name}: {val:.04f}')
+        else:
+            for k, v in cfg.data.test.items():
+                test_dataset = build_dataset(v, dict(test_mode=True))
+                test_loader = build_dataloader(test_dataset, **loader_setting)
+                outputs = multi_gpu_test(model, test_loader,
+                                         osp.join(cfg.work_dir, f'{k}_tmp'),
+                                         False)
+                if rank == 0:
+                    out = osp.join(cfg.work_dir, f'{k}_final_pred.pkl')
+                    test_dataset.dump_results(outputs, out)
+                    eval_res = test_dataset.evaluate(outputs, **eval_cfg)
+                    runner.logger.info(f'Dataset {k} Testing Output:')
+                    for name, val in eval_res.items():
+                        runner.logger.info(f'{name}: {val:.04f}')
