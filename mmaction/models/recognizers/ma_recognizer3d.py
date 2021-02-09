@@ -96,10 +96,7 @@ class MARecognizer3D(BaseRecognizer):
 
             cls_score = self.cls_head(x)
 
-        cls_score = {
-            k: self.average_clip(v, num_segs)
-            for k, v in cls_score.items()
-        }
+        cls_score = self.average_clip(cls_score, num_segs)
         return cls_score
 
     def forward_test(self, imgs):

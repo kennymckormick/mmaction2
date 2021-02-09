@@ -82,8 +82,8 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
     def average_clip(self, cls_score, num_segs=1):
         """Averaging class score over multiple clips.
 
-        Using different averaging types ('score' or 'prob' or None,
-        which defined in test_cfg) to computed the final averaged
+        Using different averaging types ('score' or 'prob' or 'sigmoid' or
+        None, which defined in test_cfg) to computed the final averaged
         class score. Only called in test mode.
 
         Args:
@@ -97,10 +97,28 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
             raise KeyError('"average_clips" must defined in test_cfg\'s keys')
 
         average_clips = self.test_cfg['average_clips']
-        if average_clips not in ['score', 'prob', None]:
-            raise ValueError(f'{average_clips} is not supported. '
-                             f'Currently supported ones are '
-                             f'["score", "prob", None]')
+
+        if isinstance(average_clips, dict):
+            for option in average_clips.values():
+                assert option in ['score', 'prob', 'sigmoid', None]
+            assert set(average_clips.keys()) == set(cls_score.keys())
+            for k in cls_score:
+                option = average_clips[k]
+                if option is None:
+                    continue
+                score = cls_score[k]
+                batch_size = score.shape[0]
+                score = score.view(batch_size // num_segs, num_segs, -1)
+                if option == 'prob':
+                    score = F.softmax(score, dim=2).mean(dim=1)
+                elif option == 'score':
+                    score = score.mean(dim=1)
+                elif option == 'sigmoid':
+                    score = F.sigmoid(score).mean(dim=1)
+                cls_score[k] = score
+            return cls_score
+
+        assert average_clips in ['score', 'prob', 'sigmoid', None]
 
         if average_clips is None:
             return cls_score
@@ -112,6 +130,8 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
             cls_score = F.softmax(cls_score, dim=2).mean(dim=1)
         elif average_clips == 'score':
             cls_score = cls_score.mean(dim=1)
+        elif average_clips == 'sigmoid':
+            cls_score = F.sigmoid(cls_score).mean(dim=1)
 
         return cls_score
 
