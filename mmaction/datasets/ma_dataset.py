@@ -162,7 +162,7 @@ class MADataset(BaseDataset):
                 # Note that the sum for onehot here >= 1.0
                 assert mmcv.is_list_of(label, int)
                 if self.random_pick_multi:
-                    results[cate_name] = np.random.choice(label)
+                    results[cate_name] = int(np.random.choice(label))
                 else:
                     onehot = torch.zeros(self.tag_category_nums[cate_name])
                     onehot[label] = 1.
@@ -227,7 +227,7 @@ class MADataset(BaseDataset):
 
             # Will Return Top-1 and Top-5
             if cate_type == 'soft':
-                gts = [np.argmax(x) for x in gts]
+                continue
 
             if cate_type == 'multi':
                 cate_num = self.tag_category_nums[cate]
