@@ -232,11 +232,11 @@ class MADataset(BaseDataset):
             if cate_type == 'multi':
                 cate_num = self.tag_category_nums[cate]
                 gts = [self.label2array(cate_num, label) for label in gts]
-
-                mAP = mean_average_precision(preds, gts)
-                eval_results[f'{cate}_mAP'] = mAP
-                log_msg = f'\n{cate}_mAP\t{mAP:.4f}'
-                print_log(log_msg, logger=logger)
+                if len(gts):
+                    mAP = mean_average_precision(preds, gts)
+                    eval_results[f'{cate}_mAP'] = mAP
+                    log_msg = f'\n{cate}_mAP\t{mAP:.4f}'
+                    print_log(log_msg, logger=logger)
             elif cate_type in ['soft', 'single']:
                 topk = (1, 5)
                 top_k_acc = top_k_accuracy(preds, gts, topk)
