@@ -143,7 +143,7 @@ def train_model(model,
             shuffle=False)
         loader_setting = dict(loader_setting,
                               **cfg.data.get('val_dataloader', {}))
-        if not isinstance(cfg.data.val, dict):
+        if hasattr(cfg.data.val, 'type'):
             val_dataset = build_dataset(cfg.data.val, dict(test_mode=True))
             val_loader = build_dataloader(val_dataset, **loader_setting)
             eval_hook = DistEvalHook if distributed else EvalHook
@@ -178,7 +178,7 @@ def train_model(model,
         loader_setting = dict(loader_setting,
                               **cfg.data.get('test_dataloader', {}))
         rank, _ = get_dist_info()
-        if not isinstance(cfg.data.test, dict):
+        if hasattr(cfg.data.test, 'type'):
             test_dataset = build_dataset(cfg.data.test, dict(test_mode=True))
             test_loader = build_dataloader(test_dataset, **loader_setting)
             outputs = multi_gpu_test(model, test_loader,
