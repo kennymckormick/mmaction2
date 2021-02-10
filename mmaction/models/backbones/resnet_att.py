@@ -405,30 +405,33 @@ class ResNetAtt(nn.Module):
         152: (Bottleneck, (3, 8, 36, 3))
     }
 
-    def __init__(self,
-                 depth,
-                 pretrained=None,
-                 torchvision_pretrain=True,
-                 in_channels=3,
-                 num_stages=4,
-                 strides=(1, 2, 2, 2),
-                 dilations=(1, 1, 1, 1),
-                 style='pytorch',
-                 frozen_stages=-1,
-                 attention_plane=64,
-                 attention_channel=1,
-                 attention_scaling=True,
-                 attention_type='softmax',
-                 attention_lowlr=False,
-                 attention_featdetach=False,
-                 head_mode='conv',
-                 debug=False,
-                 conv_cfg=dict(type='Conv'),
-                 norm_cfg=dict(type='BN2d', requires_grad=True),
-                 act_cfg=dict(type='ReLU', inplace=True),
-                 norm_eval=False,
-                 partial_bn=False,
-                 with_cp=False):
+    def __init__(
+            self,
+            depth,
+            pretrained=None,
+            torchvision_pretrain=True,
+            in_channels=3,
+            num_stages=4,
+            strides=(1, 2, 2, 2),
+            dilations=(1, 1, 1, 1),
+            style='pytorch',
+            frozen_stages=-1,
+            # BEGIN OF ATTENTION ARGS
+            attention_plane=64,
+            attention_channel=1,
+            attention_scaling=True,
+            attention_type='softmax',
+            attention_lowlr=False,
+            attention_featdetach=False,
+            head_mode='conv',
+            debug=False,
+            # END OF ATTENTION ARGS
+            conv_cfg=dict(type='Conv'),
+            norm_cfg=dict(type='BN2d', requires_grad=True),
+            act_cfg=dict(type='ReLU', inplace=True),
+            norm_eval=False,
+            partial_bn=False,
+            with_cp=False):
         super().__init__()
         if depth not in self.arch_settings:
             raise KeyError(f'invalid depth {depth} for resnet')
@@ -511,7 +514,7 @@ class ResNetAtt(nn.Module):
         self.feat_dim = self.block.expansion * 64 * 2**(
             len(self.stage_blocks) - 1)
         self.att_head = AttentionHead(
-            attention_plane=self.attention_plane,
+            attention_plane=self.attention_plane * self.block.expansion,
             attention_channel=self.attention_channel,
             attention_scaling=self.attention_scaling,
             attention_type=self.attention_type,

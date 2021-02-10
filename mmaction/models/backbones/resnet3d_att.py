@@ -1,5 +1,3 @@
-import warnings
-
 import torch.nn as nn
 import torch.utils.checkpoint as cp
 from mmcv.cnn import (ConvModule, NonLocal3d, build_activation_layer,
@@ -10,13 +8,6 @@ from torch.nn.modules.utils import _ntuple, _triple
 
 from ...utils import get_root_logger
 from ..registry import BACKBONES
-
-try:
-    from mmdet.models.builder import SHARED_HEADS as MMDET_SHARED_HEADS
-    mmdet_imported = True
-except (ImportError, ModuleNotFoundError):
-    warnings.warn('Please install mmdet to use MMDET_SHARED_HEADS')
-    mmdet_imported = False
 
 
 def conv3x3x3(in_planes,
@@ -59,19 +50,24 @@ class AttentionHead(nn.Module):
                  attention_scaling=True,
                  attention_3D=False,
                  attention_type='softmax',
+                 attention_lowlr=False,
                  softmax_3D=False,
                  feature_dim=2048,
                  head_mode='conv',
-                 att_lowlr=False,
                  debug=None):
+
         super(AttentionHead, self).__init__()
         self.attention_plane = attention_plane
         self.attention_channel = attention_channel
         self.attention_scaling = attention_scaling
+        self.attention_type = attention_type
+        self.attention_3D = attention_3D
+        self.attention_lowlr = attention_lowlr
+        # Note that 'attention_scaling' and 'softmax_3D' is only useful when
+        # the attention_type is 'softmax'
+
         self.head_mode = head_mode
         self.feature_dim = feature_dim
-        self.att_lowlr = att_lowlr
-        self.attention_3D = attention_3D
         self.softmax_3D = softmax_3D
         self.debug = debug
         self.layer_name = 'lowlr_feat2att' if self.att_lowlr else 'feat2att'
@@ -100,31 +96,35 @@ class AttentionHead(nn.Module):
         if self.debug:
             debug_info['att_before'] = att
 
-        # original shape is N C T H W
-        if self.softmax_3D:
-            att_shape = att.shape[-3:]
-            att = att.reshape(att.shape[:-3] + (-1, ))
-            att = nn.Softmax(dim=-1)(att)
-            att = att.reshape(att.shape[:-1] + att_shape)
-            if self.debug:
-                debug_info['att_after'] = att
-            if self.attention_scaling:
-                coeff = att_shape[0] * att_shape[1] * att_shape[2]
-                att = att * coeff
+        if self.attention_type == 'softmax':
+            if self.softmax_3D:
+                att_shape = att.shape[-3:]
+                att = att.reshape(att.shape[:-3] + (-1, ))
+                att = nn.Softmax(dim=-1)(att)
+                att = att.reshape(att.shape[:-1] + att_shape)
+                if self.attention_scaling:
+                    coeff = att_shape[0] * att_shape[1] * att_shape[2]
+                    att = att * coeff
+            else:
+                att_shape = att.shape[-2:]
+                att = att.reshape(att.shape[:-2] + (-1, ))
+                att = nn.Softmax(dim=-1)(att)
+                att = att.reshape(att.shape[:-1] + att_shape)
+                if self.attention_scaling:
+                    coeff = att_shape[0] * att_shape[1]
+                    att = att * coeff
         else:
-            att_shape = att.shape[-2:]
-            att = att.reshape(att.shape[:-2] + (-1, ))
-            att = nn.Softmax(dim=-1)(att)
-            att = att.reshape(att.shape[:-1] + att_shape)
-            if self.debug:
-                debug_info['att_after'] = att
-            if self.attention_scaling:
-                coeff = att_shape[0] * att_shape[1]
-                att = att * coeff
-        # now we get the attention
+            att = nn.Sigmoid(att)
+
+        if self.debug:
+            debug_info['att_after'] = att
         repeat_times = self.feature_dim // self.attention_channel
         att = att.repeat(1, repeat_times, 1, 1, 1)
-        return att * feature, debug_info
+
+        if self.debug:
+            return att * feature, debug_info
+        else:
+            return att * feature
 
 
 class BasicBlock3d(nn.Module):
@@ -432,8 +432,8 @@ class Bottleneck3d(nn.Module):
 
 
 @BACKBONES.register_module()
-class ResNet3d(nn.Module):
-    """ResNet 3d backbone.
+class ResNet3dAtt(nn.Module):
+    """ResNetAtt 3d backbone.
 
     Args:
         depth (int): Depth of resnet, from {18, 34, 50, 101, 152}.
@@ -497,34 +497,46 @@ class ResNet3d(nn.Module):
         152: (Bottleneck3d, (3, 8, 36, 3))
     }
 
-    def __init__(self,
-                 depth,
-                 pretrained,
-                 pretrained2d=True,
-                 in_channels=3,
-                 num_stages=4,
-                 base_channels=64,
-                 out_indices=(3, ),
-                 spatial_strides=(1, 2, 2, 2),
-                 temporal_strides=(1, 1, 1, 1),
-                 dilations=(1, 1, 1, 1),
-                 conv1_kernel=(5, 7, 7),
-                 conv1_stride_t=2,
-                 pool1_stride_t=2,
-                 with_pool2=True,
-                 style='pytorch',
-                 frozen_stages=-1,
-                 inflate=(1, 1, 1, 1),
-                 inflate_style='3x1x1',
-                 conv_cfg=dict(type='Conv3d'),
-                 norm_cfg=dict(type='BN3d', requires_grad=True),
-                 act_cfg=dict(type='ReLU', inplace=True),
-                 norm_eval=False,
-                 with_cp=False,
-                 non_local=(0, 0, 0, 0),
-                 non_local_cfg=dict(),
-                 zero_init_residual=True,
-                 **kwargs):
+    def __init__(
+            self,
+            depth,
+            pretrained,
+            pretrained2d=True,
+            in_channels=3,
+            num_stages=4,
+            base_channels=64,
+            spatial_strides=(1, 2, 2, 2),
+            temporal_strides=(1, 1, 1, 1),
+            dilations=(1, 1, 1, 1),
+            conv1_kernel=(1, 7, 7),
+            conv1_stride_t=1,
+            pool1_stride_t=1,
+            with_pool2=False,
+            style='pytorch',
+            frozen_stages=-1,
+            inflate=(0, 0, 1, 1),
+            inflate_style='3x1x1',
+            # BEGIN OF ATTENTION ARGS
+            attention_plane=64,
+            attention_channel=1,
+            attention_scaling=True,
+            attention_3D=False,
+            attention_type='softmax',
+            attention_lowlr=False,
+            attention_featdetach=False,
+            softmax_3D=False,
+            head_mode='conv',
+            debug=None,
+            # END OF ATTENTION ARGS
+            conv_cfg=dict(type='Conv3d'),
+            norm_cfg=dict(type='BN3d', requires_grad=True),
+            act_cfg=dict(type='ReLU', inplace=True),
+            norm_eval=False,
+            with_cp=False,
+            non_local=(0, 0, 0, 0),
+            non_local_cfg=dict(),
+            zero_init_residual=True,
+            **kwargs):
         super().__init__()
         if depth not in self.arch_settings:
             raise KeyError(f'invalid depth {depth} for resnet')
@@ -535,8 +547,6 @@ class ResNet3d(nn.Module):
         self.base_channels = base_channels
         self.num_stages = num_stages
         assert 1 <= num_stages <= 4
-        self.out_indices = out_indices
-        assert max(out_indices) < num_stages
         self.spatial_strides = spatial_strides
         self.temporal_strides = temporal_strides
         self.dilations = dilations
@@ -548,6 +558,18 @@ class ResNet3d(nn.Module):
         self.with_pool2 = with_pool2
         self.style = style
         self.frozen_stages = frozen_stages
+
+        self.attention_plane = attention_plane
+        self.attention_channel = attention_channel
+        self.attention_scaling = attention_scaling
+        self.attention_3D = attention_3D
+        self.attention_type = attention_type
+        self.attention_lowlr = attention_lowlr
+        self.attention_featdetach = attention_featdetach
+        self.softmax_3D = softmax_3D
+        self.head_mode = head_mode
+        self.debug = debug
+
         self.stage_inflations = _ntuple(num_stages)(inflate)
         self.non_local_stages = _ntuple(num_stages)(non_local)
         self.inflate_style = inflate_style
@@ -590,13 +612,47 @@ class ResNet3d(nn.Module):
                 inflate_style=self.inflate_style,
                 with_cp=with_cp,
                 **kwargs)
-            self.inplanes = planes * self.block.expansion
+
             layer_name = f'layer{i + 1}'
             self.add_module(layer_name, res_layer)
             self.res_layers.append(layer_name)
+            if i == 3:
+                res_layer = self.make_res_layer(
+                    self.block,
+                    self.inplanes,
+                    self.attention_plane,
+                    num_blocks,
+                    spatial_stride=1,
+                    temporal_stride=1,
+                    dilation=1,
+                    style=self.style,
+                    norm_cfg=self.norm_cfg,
+                    conv_cfg=self.conv_cfg,
+                    act_cfg=self.act_cfg,
+                    inflate=self.attention_3D,
+                    inflate_style=self.inflate_style,
+                    with_cp=with_cp,
+                    **kwargs)
+                layer_name = ('lowlr_att_layer4'
+                              if self.attention_lowlr else 'att_layer4')
+                self.att_layer_name = layer_name
+                self.add_module(self.att_layer_name, res_layer)
+
+            self.inplanes = planes * self.block.expansion
 
         self.feat_dim = self.block.expansion * self.base_channels * 2**(
             len(self.stage_blocks) - 1)
+        self.att_head = AttentionHead(
+            attention_plane=self.attention_plane * self.block.expansion,
+            attention_channel=self.attention_channel,
+            attention_scaling=self.attention_scaling,
+            attention_3D=self.attention_3D,
+            attention_type=self.attention_type,
+            attention_lowlr=self.attention_lowlr,
+            softmax_3D=self.softmax_3D,
+            feature_dim=self.feat_dim // 2,
+            head_mode=self.head_mode,
+            debug=self.debug)
 
     @staticmethod
     def make_res_layer(block,
@@ -927,176 +983,19 @@ class ResNet3d(nn.Module):
         """
         x = self.conv1(x)
         x = self.maxpool(x)
-        outs = []
-        for i, layer_name in enumerate(self.res_layers):
-            res_layer = getattr(self, layer_name)
-            x = res_layer(x)
-            if i == 0 and self.with_pool2:
-                x = self.pool2(x)
-            if i in self.out_indices:
-                outs.append(x)
-        if len(outs) == 1:
-            return outs[0]
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
 
-        return tuple(outs)
+        att_res_layer = getattr(self, self.att_layer_name)
+        att = att_res_layer(x)
+        x, info = self.att_head(att, x)
+        x = self.layer4(x)
 
-    def train(self, mode=True):
-        """Set the optimization status when training."""
-        super().train(mode)
-        self._freeze_stages()
-        if mode and self.norm_eval:
-            for m in self.modules():
-                if isinstance(m, _BatchNorm):
-                    m.eval()
-
-
-@BACKBONES.register_module()
-class ResNet3dLayer(nn.Module):
-    """ResNet 3d Layer.
-
-    Args:
-        depth (int): Depth of resnet, from {18, 34, 50, 101, 152}.
-        pretrained (str | None): Name of pretrained model.
-        pretrained2d (bool): Whether to load pretrained 2D model.
-            Default: True.
-        stage (int): The index of Resnet stage. Default: 3.
-        base_channels (int): Channel num of stem output features. Default: 64.
-        spatial_stride (int): The 1st res block's spatial stride. Default 2.
-        temporal_stride (int): The 1st res block's temporal stride. Default 1.
-        dilation (int): The dilation. Default: 1.
-        style (str): `pytorch` or `caffe`. If set to "pytorch", the stride-two
-            layer is the 3x3 conv layer, otherwise the stride-two layer is
-            the first 1x1 conv layer. Default: 'pytorch'.
-        all_frozen (bool): Frozen all modules in the layer. Default: False.
-        inflate (int): Inflate Dims of each block. Default: 1.
-        inflate_style (str): ``3x1x1`` or ``1x1x1``. which determines the
-            kernel sizes and padding strides for conv1 and conv2 in each block.
-            Default: '3x1x1'.
-        conv_cfg (dict): Config for conv layers. required keys are ``type``
-            Default: ``dict(type='Conv3d')``.
-        norm_cfg (dict): Config for norm layers. required keys are ``type`` and
-            ``requires_grad``.
-            Default: ``dict(type='BN3d', requires_grad=True)``.
-        act_cfg (dict): Config dict for activation layer.
-            Default: ``dict(type='ReLU', inplace=True)``.
-        norm_eval (bool): Whether to set BN layers to eval mode, namely, freeze
-            running stats (mean and var). Default: False.
-        with_cp (bool): Use checkpoint or not. Using checkpoint will save some
-            memory while slowing down the training speed. Default: False.
-        zero_init_residual (bool):
-            Whether to use zero initialization for residual block,
-            Default: True.
-        kwargs (dict, optional): Key arguments for "make_res_layer".
-    """
-
-    def __init__(self,
-                 depth,
-                 pretrained,
-                 pretrained2d=True,
-                 stage=3,
-                 base_channels=64,
-                 spatial_stride=2,
-                 temporal_stride=1,
-                 dilation=1,
-                 style='pytorch',
-                 all_frozen=False,
-                 inflate=1,
-                 inflate_style='3x1x1',
-                 conv_cfg=dict(type='Conv3d'),
-                 norm_cfg=dict(type='BN3d', requires_grad=True),
-                 act_cfg=dict(type='ReLU', inplace=True),
-                 norm_eval=False,
-                 with_cp=False,
-                 zero_init_residual=True,
-                 **kwargs):
-
-        super().__init__()
-        self.arch_settings = ResNet3d.arch_settings
-        assert depth in self.arch_settings
-
-        self.make_res_layer = ResNet3d.make_res_layer
-        self._inflate_conv_params = ResNet3d._inflate_conv_params
-        self._inflate_bn_params = ResNet3d._inflate_bn_params
-        self._inflate_weights = ResNet3d._inflate_weights
-        self._init_weights = ResNet3d._init_weights
-
-        self.depth = depth
-        self.pretrained = pretrained
-        self.pretrained2d = pretrained2d
-        self.stage = stage
-        # stage index is 0 based
-        assert stage >= 0 and stage <= 3
-        self.base_channels = base_channels
-
-        self.spatial_stride = spatial_stride
-        self.temporal_stride = temporal_stride
-        self.dilation = dilation
-
-        self.style = style
-        self.all_frozen = all_frozen
-
-        self.stage_inflation = inflate
-        self.inflate_style = inflate_style
-        self.conv_cfg = conv_cfg
-        self.norm_cfg = norm_cfg
-        self.act_cfg = act_cfg
-        self.norm_eval = norm_eval
-        self.with_cp = with_cp
-        self.zero_init_residual = zero_init_residual
-
-        block, stage_blocks = self.arch_settings[depth]
-        stage_block = stage_blocks[stage]
-        planes = 64 * 2**stage
-        inplanes = 64 * 2**(stage - 1) * block.expansion
-
-        res_layer = self.make_res_layer(
-            block,
-            inplanes,
-            planes,
-            stage_block,
-            spatial_stride=spatial_stride,
-            temporal_stride=temporal_stride,
-            dilation=dilation,
-            style=self.style,
-            norm_cfg=self.norm_cfg,
-            conv_cfg=self.conv_cfg,
-            act_cfg=self.act_cfg,
-            inflate=self.stage_inflation,
-            inflate_style=self.inflate_style,
-            with_cp=with_cp,
-            **kwargs)
-
-        self.layer_name = f'layer{stage + 1}'
-        self.add_module(self.layer_name, res_layer)
-
-    def inflate_weights(self, logger):
-        self._inflate_weights(self, logger)
-
-    def _freeze_stages(self):
-        """Prevent all the parameters from being optimized before
-        ``self.frozen_stages``."""
-        if self.all_frozen:
-            layer = getattr(self, self.layer_name)
-            layer.eval()
-            for param in layer.parameters():
-                param.requires_grad = False
-
-    def init_weights(self, pretrained=None):
-        self._init_weights(self, pretrained)
-
-    def forward(self, x):
-        """Defines the computation performed at every call.
-
-        Args:
-            x (torch.Tensor): The input data.
-
-        Returns:
-            torch.Tensor: The feature of the input
-            samples extracted by the backbone.
-        """
-        res_layer = getattr(self, self.layer_name)
-        out = res_layer(x)
-        return out
+        if self.debug:
+            return x, info
+        else:
+            return x
 
     def train(self, mode=True):
         """Set the optimization status when training."""
@@ -1106,7 +1005,3 @@ class ResNet3dLayer(nn.Module):
             for m in self.modules():
                 if isinstance(m, _BatchNorm):
                     m.eval()
-
-
-if mmdet_imported:
-    MMDET_SHARED_HEADS.register_module()(ResNet3dLayer)
