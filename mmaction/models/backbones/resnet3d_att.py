@@ -70,7 +70,8 @@ class AttentionHead(nn.Module):
         self.feature_dim = feature_dim
         self.softmax_3D = softmax_3D
         self.debug = debug
-        self.layer_name = 'lowlr_feat2att' if self.att_lowlr else 'feat2att'
+        self.layer_name = ('lowlr_feat2att'
+                           if self.attention_lowlr else 'feat2att')
 
         assert feature_dim % attention_channel == 0
 
