@@ -618,9 +618,15 @@ class ResNetAtt(nn.Module):
                 f'These parameters in pretrained checkpoint are not loaded'
                 f': {remaining_names}')
 
+    # The order should be changed
     def init_weights(self):
         """Initiate the parameters either from existing checkpoint or from
         scratch."""
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                kaiming_init(m)
+            elif isinstance(m, nn.BatchNorm2d):
+                constant_init(m, 1)
         if isinstance(self.pretrained, str):
             logger = get_root_logger()
             if self.torchvision_pretrain:
@@ -631,11 +637,7 @@ class ResNetAtt(nn.Module):
                 load_checkpoint(
                     self, self.pretrained, strict=False, logger=logger)
         elif self.pretrained is None:
-            for m in self.modules():
-                if isinstance(m, nn.Conv2d):
-                    kaiming_init(m)
-                elif isinstance(m, nn.BatchNorm2d):
-                    constant_init(m, 1)
+            pass
         else:
             raise TypeError('pretrained must be a str or None')
 

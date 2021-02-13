@@ -937,6 +937,18 @@ class ResNet3dAtt(nn.Module):
                 override the original `pretrained` if set. The arg is added to
                 be compatible with mmdet. Default: None.
         """
+        for m in self.modules():
+            if isinstance(m, nn.Conv3d):
+                kaiming_init(m)
+            elif isinstance(m, _BatchNorm):
+                constant_init(m, 1)
+
+        if self.zero_init_residual:
+            for m in self.modules():
+                if isinstance(m, Bottleneck3d):
+                    constant_init(m.conv3.bn, 0)
+                elif isinstance(m, BasicBlock3d):
+                    constant_init(m.conv2.bn, 0)
         if pretrained:
             self.pretrained = pretrained
         if isinstance(self.pretrained, str):
@@ -946,25 +958,13 @@ class ResNet3dAtt(nn.Module):
             if self.pretrained2d:
                 # Inflate 2D model into 3D model.
                 self.inflate_weights(logger)
-
             else:
                 # Directly load 3D model.
                 load_checkpoint(
                     self, self.pretrained, strict=False, logger=logger)
 
         elif self.pretrained is None:
-            for m in self.modules():
-                if isinstance(m, nn.Conv3d):
-                    kaiming_init(m)
-                elif isinstance(m, _BatchNorm):
-                    constant_init(m, 1)
-
-            if self.zero_init_residual:
-                for m in self.modules():
-                    if isinstance(m, Bottleneck3d):
-                        constant_init(m.conv3.bn, 0)
-                    elif isinstance(m, BasicBlock3d):
-                        constant_init(m.conv2.bn, 0)
+            pass
         else:
             raise TypeError('pretrained must be a str or None')
 
