@@ -169,7 +169,7 @@ class MADataset(BaseDataset):
                     soft = torch.zeros(self.tag_category_nums[cate_name])
                     soft[label] = 1.
                     soft /= len(label)
-                    return soft
+                    results[cate_name] = soft
                 else:
                     onehot = torch.zeros(self.tag_category_nums[cate_name])
                     onehot[label] = 1.
