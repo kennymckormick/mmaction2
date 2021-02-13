@@ -79,6 +79,7 @@ class MADataset(BaseDataset):
                  tag_label_types,
                  filename_tmpl=None,
                  random_pick_multi=False,
+                 multi2soft=False,
                  **kwargs):
         assert len(tag_categories) == len(tag_category_nums)
         self.tag_categories = tag_categories
@@ -99,6 +100,7 @@ class MADataset(BaseDataset):
 
         self.start_index = kwargs.pop('start_index', 0)
         self.dataset_type = None
+        self.multi2soft = multi2soft
         super().__init__(
             ann_file, pipeline, start_index=self.start_index, **kwargs)
 
@@ -163,6 +165,11 @@ class MADataset(BaseDataset):
                 assert mmcv.is_list_of(label, int)
                 if self.random_pick_multi:
                     results[cate_name] = int(np.random.choice(label))
+                elif self.multi2soft:
+                    soft = torch.zeros(self.tag_category_nums[cate_name])
+                    soft[label] = 1.
+                    soft /= len(label)
+                    return soft
                 else:
                     onehot = torch.zeros(self.tag_category_nums[cate_name])
                     onehot[label] = 1.
