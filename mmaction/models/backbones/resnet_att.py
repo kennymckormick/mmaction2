@@ -554,6 +554,8 @@ class ResNetAtt(nn.Module):
         """
 
         weight_tv_name = module_name_tv + '.weight'
+        if weight_tv_name not in state_dict_tv:
+            return
         conv.weight.data.copy_(state_dict_tv[weight_tv_name])
         loaded_param_names.append(weight_tv_name)
 
@@ -578,6 +580,8 @@ class ResNetAtt(nn.Module):
 
         for param_name, param in bn.named_parameters():
             param_tv_name = f'{module_name_tv}.{param_name}'
+            if param_tv_name not in state_dict_tv:
+                return
             param_tv = state_dict_tv[param_tv_name]
             param.data.copy_(param_tv)
             loaded_param_names.append(param_tv_name)
