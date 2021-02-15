@@ -8,11 +8,10 @@ import torch
 from mmcv import Config, DictAction
 from mmcv.cnn import fuse_conv_bn
 from mmcv.fileio.io import file_handlers
-from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
+from mmcv.parallel import MMDistributedDataParallel
 from mmcv.runner import get_dist_info, init_dist, load_checkpoint
-from mmcv.runner.fp16_utils import wrap_fp16_model
 
-from mmaction.apis import multi_gpu_test, single_gpu_test
+from mmaction.apis import multi_gpu_test
 from mmaction.datasets import build_dataloader, build_dataset
 from mmaction.models import build_model
 
@@ -121,30 +120,25 @@ def main():
         ('Please specify at least one operation (save or eval the '
          'results) with the argument "--out" or "--eval"')
 
-    dataset_type = cfg.data.test.type
     if output_config.get('out', None):
         out = output_config['out']
         # make sure the dirname of the output path exists
         mmcv.mkdir_or_exist(osp.dirname(out))
         _, suffix = osp.splitext(out)
-        if dataset_type == 'AVADataset':
-            assert suffix[1:] == 'csv', ('For AVADataset, the format of the '
-                                         'output file should be csv')
-        else:
-            assert suffix[1:] in file_handlers, (
-                'The format of the output '
-                'file should be json, pickle or yaml')
+        # No need to consider AVA here
+        assert suffix[1:] in file_handlers, (
+            'The format of the output '
+            'file should be json, pickle or yaml')
+
+    assert out.endswith('.pkl'), 'for simplicity'
 
     # set cudnn benchmark
     if cfg.get('cudnn_benchmark', False):
         torch.backends.cudnn.benchmark = True
-    cfg.data.test.test_mode = True
 
     if cfg.test_cfg is None:
         cfg.test_cfg = dict(average_clips=args.average_clips)
     else:
-        # You can set average_clips during testing, it will override the
-        # original settting
         if args.average_clips is not None:
             cfg.test_cfg.average_clips = args.average_clips
 
@@ -155,48 +149,67 @@ def main():
         distributed = True
         init_dist(args.launcher, **cfg.dist_params)
 
-    # build the dataloader
-    dataset = build_dataset(cfg.data.test, dict(test_mode=True))
-    dataloader_setting = dict(
-        videos_per_gpu=cfg.data.get('videos_per_gpu', 1),
-        workers_per_gpu=cfg.data.get('workers_per_gpu', 1),
-        dist=distributed,
-        shuffle=False)
-    dataloader_setting = dict(dataloader_setting,
-                              **cfg.data.get('test_dataloader', {}))
-    data_loader = build_dataloader(dataset, **dataloader_setting)
-
     # build the model and load checkpoint
     model = build_model(cfg.model, train_cfg=None, test_cfg=cfg.test_cfg)
-    fp16_cfg = cfg.get('fp16', None)
-    if fp16_cfg is not None:
-        wrap_fp16_model(model)
+    # No fp16 supports
     load_checkpoint(model, args.checkpoint, map_location='cpu')
 
     if args.fuse_conv_bn:
         model = fuse_conv_bn(model)
 
-    if not distributed:
-        model = MMDataParallel(model, device_ids=[0])
-        outputs = single_gpu_test(model, data_loader)
-    else:
-        model = MMDistributedDataParallel(
-            model.cuda(),
-            device_ids=[torch.cuda.current_device()],
-            broadcast_buffers=False)
+    assert distributed
+    model = MMDistributedDataParallel(
+        model.cuda(),
+        device_ids=[torch.cuda.current_device()],
+        broadcast_buffers=False)
+    rank, _ = get_dist_info()
+    dataloader_setting = dict(
+        videos_per_gpu=cfg.data.get('videos_per_gpu', 1),
+        workers_per_gpu=cfg.data.get('workers_per_gpu', 2),
+        dist=distributed,
+        shuffle=False)
+    dataloader_setting = dict(dataloader_setting,
+                              **cfg.data.get('test_dataloader', {}))
+
+    if 'type' in cfg.data.test:
+        dataset_type = cfg.data.test.type
+        cfg.data.test.test_mode = True
+        dataset = build_dataset(cfg.data.test, dict(test_mode=True))
+        data_loader = build_dataloader(dataset, **dataloader_setting)
         outputs = multi_gpu_test(model, data_loader, args.tmpdir,
                                  args.gpu_collect)
-
-    rank, _ = get_dist_info()
-    if rank == 0:
-        if output_config.get('out', None):
-            out = output_config['out']
-            print(f'\nwriting results to {out}')
-            dataset.dump_results(outputs, **output_config)
-        if eval_config:
-            eval_res = dataset.evaluate(outputs, **eval_config)
-            for name, val in eval_res.items():
-                print(f'{name}: {val:.04f}')
+        if rank == 0:
+            if output_config.get('out', None):
+                out = output_config['out']
+                print(f'\nwriting results to {out}')
+                dataset.dump_results(outputs, **output_config)
+            if dataset_type == 'MADataset':
+                eval_res = dataset.evaluate(outputs)
+                for name, val in eval_res.items():
+                    print(f'{name}: {val:.04f}')
+            elif eval_config:
+                eval_res = dataset.evaluate(outputs, **eval_config)
+                for name, val in eval_res.items():
+                    print(f'{name}: {val:.04f}')
+    else:
+        for dataset_name, dataset in cfg.data.test.items():
+            dataset_type = dataset.type
+            dataset.test_mode = True
+            dataset = build_dataset(dataset, dict(test_mode=True))
+            data_loader = build_dataloader(dataset, **dataloader_setting)
+            outputs = multi_gpu_test(model, data_loader, args.tmpdir,
+                                     args.gpu_collect)
+            if rank == 0:
+                if output_config.get('out', None):
+                    out = output_config['out']
+                    out = out.replace('.pkl', f'_{dataset_name}.pkl')
+                    print(f'\nwriting results to {out}')
+                    dataset.dump_results(outputs, **output_config)
+                # which is only used for MA Dataset
+                assert dataset_type == 'MADataset'
+                eval_res = dataset.evaluate(outputs)
+                for name, val in eval_res.items():
+                    print(f'{name}: {val:.04f}')
 
 
 if __name__ == '__main__':
