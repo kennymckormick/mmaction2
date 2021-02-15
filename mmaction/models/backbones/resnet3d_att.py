@@ -115,7 +115,7 @@ class AttentionHead(nn.Module):
                     coeff = att_shape[0] * att_shape[1]
                     att = att * coeff
         else:
-            att = nn.Sigmoid(att)
+            att = nn.Sigmoid()(att)
 
         if self.debug:
             debug_info['att_after'] = att
