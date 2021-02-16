@@ -2,22 +2,21 @@ import torch.nn as nn
 from mmcv.cnn import ConvModule, constant_init, kaiming_init
 from mmcv.runner import _load_checkpoint, load_checkpoint
 from mmcv.utils import _BatchNorm
+from torch.nn import Conv2d
 from torch.utils import checkpoint as cp
 
 from ...utils import get_root_logger
 from ..registry import BACKBONES
 
 
-def conv3x3(in_planes, out_planes, stride=1, dilation=1):
+def conv3x3(in_planes, out_planes):
     """3x3 convolution with padding."""
-    return nn.Conv2d(
-        in_planes,
-        out_planes,
-        kernel_size=3,
-        stride=stride,
-        padding=dilation,
-        dilation=dilation,
-        bias=False)
+    return Conv2d(in_planes, out_planes, kernel_size=3, padding=1, bias=False)
+
+
+def conv1x1(in_planes, out_planes):
+    """3x3 convolution with padding."""
+    return Conv2d(in_planes, out_planes, kernel_size=1, padding=0, bias=False)
 
 
 class AttentionHead(nn.Module):
@@ -28,8 +27,9 @@ class AttentionHead(nn.Module):
                  attention_scaling=False,
                  attention_type='softmax',
                  attention_lowlr=False,
-                 feature_dim=2048,
+                 feature_dim=1024,
                  head_mode='conv',
+                 headconv_mode='3x3',
                  debug=None):
         super(AttentionHead, self).__init__()
         self.attention_plane = attention_plane
@@ -47,10 +47,15 @@ class AttentionHead(nn.Module):
 
         self.layer_name = ('lowlr_feat2att'
                            if self.attention_lowlr else 'feat2att')
+        self.headconv_mode = headconv_mode
         assert feature_dim % attention_channel == 0
 
         feat2att = []
-        feat2att.append(conv3x3(self.attention_plane, self.attention_channel))
+        if self.headconv_mode == '3x3':
+            conv = conv3x3(self.attention_plane, self.attention_channel)
+        else:
+            conv = conv1x1(self.attention_plane, self.attention_channel)
+        feat2att.append(conv)
         if 'bn' in self.head_mode:
             feat2att.append(nn.BatchNorm2d(self.attention_channel))
         if 'relu' in self.head_mode:
@@ -424,6 +429,7 @@ class ResNetAtt(nn.Module):
             attention_lowlr=False,
             attention_featdetach=False,
             head_mode='conv',
+            headconv_mode='3x3',
             debug=False,
             # END OF ATTENTION ARGS
             conv_cfg=dict(type='Conv'),
@@ -454,6 +460,7 @@ class ResNetAtt(nn.Module):
         self.attention_lowlr = attention_lowlr
         self.attention_featdetach = attention_featdetach
         self.head_mode = head_mode
+        self.headconv_mode = headconv_mode
         self.debug = debug
 
         self.conv_cfg = conv_cfg
@@ -521,6 +528,7 @@ class ResNetAtt(nn.Module):
             attention_lowlr=self.attention_lowlr,
             feature_dim=self.feat_dim // 2,
             head_mode=self.head_mode,
+            headconv_mode=self.headconv_mode,
             debug=self.debug)
 
     def _make_stem_layer(self):

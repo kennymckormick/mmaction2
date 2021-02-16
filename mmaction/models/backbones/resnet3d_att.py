@@ -4,42 +4,31 @@ from mmcv.cnn import (ConvModule, NonLocal3d, build_activation_layer,
                       constant_init, kaiming_init)
 from mmcv.runner import _load_checkpoint, load_checkpoint
 from mmcv.utils import _BatchNorm
+from torch.nn import Conv3d
 from torch.nn.modules.utils import _ntuple, _triple
 
 from ...utils import get_root_logger
 from ..registry import BACKBONES
 
 
-def conv3x3x3(in_planes,
-              out_planes,
-              spatial_stride=1,
-              temporal_stride=1,
-              dilation=1):
+def conv3x3x3(in_planes, out_planes):
     """3x3x3 convolution with padding."""
-    return nn.Conv3d(
-        in_planes,
-        out_planes,
-        kernel_size=3,
-        stride=(temporal_stride, spatial_stride, spatial_stride),
-        padding=dilation,
-        dilation=dilation,
-        bias=False)
+    return Conv3d(in_planes, out_planes, kernel_size=3, padding=1, bias=False)
 
 
-def conv1x3x3(in_planes,
-              out_planes,
-              spatial_stride=1,
-              temporal_stride=1,
-              dilation=1):
+def conv1x3x3(in_planes, out_planes):
     """1x3x3 convolution with padding."""
-    return nn.Conv3d(
+    return Conv3d(
         in_planes,
         out_planes,
         kernel_size=(1, 3, 3),
-        stride=(temporal_stride, spatial_stride, spatial_stride),
-        padding=(0, dilation, dilation),
-        dilation=dilation,
+        padding=(0, 1, 1),
         bias=False)
+
+
+def conv1x1x1(in_planes, out_planes):
+    """1x1x1 convolution with padding."""
+    return Conv3d(in_planes, out_planes, kernel_size=1, padding=0, bias=False)
 
 
 class AttentionHead(nn.Module):
@@ -48,12 +37,12 @@ class AttentionHead(nn.Module):
                  attention_plane=64,
                  attention_channel=1,
                  attention_scaling=True,
-                 attention_3D=False,
                  attention_type='softmax',
                  attention_lowlr=False,
                  softmax_3D=False,
-                 feature_dim=2048,
+                 feature_dim=256,
                  head_mode='conv',
+                 headconv_mode='3x3x3',
                  debug=None):
 
         super(AttentionHead, self).__init__()
@@ -61,12 +50,13 @@ class AttentionHead(nn.Module):
         self.attention_channel = attention_channel
         self.attention_scaling = attention_scaling
         self.attention_type = attention_type
-        self.attention_3D = attention_3D
         self.attention_lowlr = attention_lowlr
         # Note that 'attention_scaling' and 'softmax_3D' is only useful when
         # the attention_type is 'softmax'
 
         self.head_mode = head_mode
+        assert headconv_mode in ['3x3x3', '1x3x3', '1x1x1']
+        self.headconv_mode = headconv_mode
         self.feature_dim = feature_dim
         self.softmax_3D = softmax_3D
         self.debug = debug
@@ -76,13 +66,13 @@ class AttentionHead(nn.Module):
         assert feature_dim % attention_channel == 0
 
         feat2att = []
-        if self.attention_3D:
-            conv_module = conv3x3x3(self.attention_plane,
-                                    self.attention_channel)
-        else:
-            conv_module = conv1x3x3(self.attention_plane,
-                                    self.attention_channel)
-        feat2att.append(conv_module)
+        if self.headconv_mode == '3x3x3':
+            conv = conv3x3x3(self.attention_plane, self.attention_channel)
+        elif self.headconv_mode == '1x3x3':
+            conv = conv1x3x3(self.attention_plane, self.attention_channel)
+        elif self.headconv_mode == '1x1x1':
+            conv = conv1x1x1(self.attention_plane, self.attention_channel)
+        feat2att.append(conv)
 
         if 'bn' in self.head_mode:
             feat2att.append(nn.BatchNorm3d(self.attention_channel))
@@ -527,6 +517,7 @@ class ResNet3dAtt(nn.Module):
             attention_featdetach=False,
             softmax_3D=False,
             head_mode='conv',
+            headconv_mode='3x3x3',
             debug=None,
             # END OF ATTENTION ARGS
             conv_cfg=dict(type='Conv3d'),
@@ -569,6 +560,7 @@ class ResNet3dAtt(nn.Module):
         self.attention_featdetach = attention_featdetach
         self.softmax_3D = softmax_3D
         self.head_mode = head_mode
+        self.headconv_mode = headconv_mode
         self.debug = debug
 
         self.stage_inflations = _ntuple(num_stages)(inflate)
@@ -647,12 +639,12 @@ class ResNet3dAtt(nn.Module):
             attention_plane=self.attention_plane * self.block.expansion,
             attention_channel=self.attention_channel,
             attention_scaling=self.attention_scaling,
-            attention_3D=self.attention_3D,
             attention_type=self.attention_type,
             attention_lowlr=self.attention_lowlr,
             softmax_3D=self.softmax_3D,
             feature_dim=self.feat_dim // 2,
             head_mode=self.head_mode,
+            headconv_mode=self.headconv_mode,
             debug=self.debug)
 
     @staticmethod
