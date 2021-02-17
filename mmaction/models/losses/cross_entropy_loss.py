@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -77,6 +78,8 @@ class SoftLabelLoss(BaseWeightedLoss):
         cls_score = cls_score / self.temperature
         cls_score = nn.LogSoftmax(dim=1)(cls_score)
         label = nn.Softmax(dim=1)(label)
-        loss = nn.KLDivLoss(reduction='batchmean')(cls_score, label)
+        loss = torch.mean(torch.sum(-label * cls_score, 1))
+        # This is a bug
+        # loss = nn.KLDivLoss(reduction='batchmean')(cls_score, label)
         loss = loss * (self.temperature**2)
         return loss
