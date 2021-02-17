@@ -931,6 +931,8 @@ class LoadMMKineticsPose(LoadKineticsPose):
 
         num_frame = results['num_frame']
         frame_inds = results.pop('frame_inds')
+        # Since it starts from 1
+        frame_inds = frame_inds - 1
         if anno_inds is not None:
             frame_inds = frame_inds[anno_inds]
 
