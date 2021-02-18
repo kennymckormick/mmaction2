@@ -66,20 +66,23 @@ class BCELossWithLogits(BaseWeightedLoss):
 @LOSSES.register_module()
 class SoftLabelLoss(BaseWeightedLoss):
 
-    def __init__(self, loss_weight=1., temperature=1.):
+    def __init__(self, loss_weight=1., temperature=1., kl_ratio=0):
         super().__init__(loss_weight=loss_weight)
+        assert 0 <= kl_ratio <= 1
+        assert temperature > 0
         self.temperature = temperature
+        self.kl_ratio = kl_ratio
 
-    # cls_score and label are all logits
     def _forward(self, cls_score, label, **kwargs):
-
         assert cls_score.shape == label.shape
         label = label / self.temperature
         cls_score = cls_score / self.temperature
         cls_score = nn.LogSoftmax(dim=1)(cls_score)
         label = nn.Softmax(dim=1)(label)
-        loss = torch.mean(torch.sum(-label * cls_score, 1))
-        # This is a bug
-        # loss = nn.KLDivLoss(reduction='batchmean')(cls_score, label)
+        softce_loss = torch.mean(torch.sum(-label * cls_score, 1))
+        kldiv_loss = nn.KLDivLoss(reduction='batchmean')(cls_score, label)
+        if not hasattr(self, 'kl_ratio'):
+            self.kl_ratio = 0.
+        loss = softce_loss * (1 - self.kl_ratio) + kldiv_loss * self.kl_ratio
         loss = loss * (self.temperature**2)
         return loss
