@@ -112,10 +112,7 @@ class AttentionHead(nn.Module):
         repeat_times = self.feature_dim // self.attention_channel
         att = att.repeat(1, repeat_times, 1, 1, 1)
 
-        if self.debug:
-            return att * feature, debug_info
-        else:
-            return att * feature
+        return att * feature, debug_info
 
 
 class BasicBlock3d(nn.Module):
