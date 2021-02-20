@@ -887,7 +887,7 @@ class LoadMMKineticsPose(LoadKineticsPose):
                  squeeze=True,
                  kp2keep=None,
                  max_person=10,
-                 drop_metric=dict(face=1, torso=1, limb=1),
+                 drop_metric=dict(face=1, torso=2, limb=3),
                  **kwargs):
         super().__init__(
             io_backend=io_backend,
