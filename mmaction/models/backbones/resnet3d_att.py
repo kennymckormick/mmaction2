@@ -498,6 +498,7 @@ class ResNet3dAtt(nn.Module):
             dilations=(1, 1, 1, 1),
             conv1_kernel=(1, 7, 7),
             conv1_stride_t=1,
+            pool1_kernel_t=1,
             pool1_stride_t=1,
             with_pool2=False,
             style='pytorch',
@@ -543,6 +544,7 @@ class ResNet3dAtt(nn.Module):
             dilations) == num_stages
         self.conv1_kernel = conv1_kernel
         self.conv1_stride_t = conv1_stride_t
+        self.pool1_kernel_t = pool1_kernel_t
         self.pool1_stride_t = pool1_stride_t
         self.with_pool2 = with_pool2
         self.style = style
@@ -897,7 +899,7 @@ class ResNet3dAtt(nn.Module):
             act_cfg=self.act_cfg)
 
         self.maxpool = nn.MaxPool3d(
-            kernel_size=(1, 3, 3),
+            kernel_size=(self.pool1_kernel_t, 3, 3),
             stride=(self.pool1_stride_t, 2, 2),
             padding=(0, 1, 1))
 

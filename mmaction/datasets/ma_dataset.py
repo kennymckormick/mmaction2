@@ -146,7 +146,7 @@ class MADataset(BaseDataset):
         for cate_name in self.tag_categories:
             if cate_name not in results:
                 results[cate_name + '_mask'] = 0
-                label_type = self.tag_label_types['cate_name']
+                label_type = self.tag_label_types[cate_name]
                 if label_type == 'single':
                     results[cate_name] = -1
                 elif label_type == 'multi' and self.random_pick_multi:
