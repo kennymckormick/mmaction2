@@ -130,37 +130,40 @@ class ResNet3dPoseSlowFast(nn.Module):
 
         x_pose = self.pose_path.conv1(heatmap_imgs)
         x_pose = self.pose_path.maxpool(x_pose)
-        # N x 32 x 24 x 56 x 56
 
-        # I write down the inference code linearly
-        # layer1
         x_rgb = self.rgb_path.layer1(x_rgb)
-        # N x 256 x 8 x 56 x 56
-
-        # layer2
         x_rgb = self.rgb_path.layer2(x_rgb)
-        # N x 512 x 8 x 28 x 28
         x_pose = self.pose_path.layer1(x_pose)
-        # N x 128 x 24 x 28 x 28
-        x_pose_lateral = self.rgb_path.layer2_lateral(x_pose)
-        # N x 128 x 8 x 28 x 28
-        x_rgb = torch.cat((x_rgb, x_pose_lateral), dim=1)
-        # N x 640 x 8 x 28 x 28
 
-        # layer3
+        if hasattr(self.rgb_path, 'layer2_lateral'):
+            x_pose_lateral = self.rgb_path.layer2_lateral(x_pose)
+
+        if hasattr(self.pose_path, 'layer2_lateral'):
+            x_rgb_lateral = self.pose_path.layer2_lateral(x_rgb)
+
+        if hasattr(self.rgb_path, 'layer2_lateral'):
+            x_rgb = torch.cat((x_rgb, x_pose_lateral), dim=1)
+
+        if hasattr(self.pose_path, 'layer2_lateral'):
+            x_pose = torch.cat((x_pose, x_rgb_lateral), dim=1)
+
         x_rgb = self.rgb_path.layer3(x_rgb)
-        # N x 1024 x 8 x 14 x 14
         x_pose = self.pose_path.layer2(x_pose)
-        # N x 256 x 24 x 14 x 14
-        x_pose_lateral = self.rgb_path.layer3_lateral(x_pose)
-        # N x 256 x 8 x 14 x 14
-        x_rgb = torch.cat((x_rgb, x_pose_lateral), dim=1)
-        # N x 1280 x 8 x 14 x 14
 
-        # layer4
+        if hasattr(self.rgb_path, 'layer3_lateral'):
+            x_pose_lateral = self.rgb_path.layer3_lateral(x_pose)
+
+        if hasattr(self.pose_path, 'layer3_lateral'):
+            x_rgb_lateral = self.pose_path.layer3_lateral(x_rgb)
+
+        if hasattr(self.rgb_path, 'layer3_lateral'):
+            x_rgb = torch.cat((x_rgb, x_pose_lateral), dim=1)
+
+        if hasattr(self.pose_path, 'layer3_lateral'):
+            x_pose = torch.cat((x_pose, x_rgb_lateral), dim=1)
+
         x_rgb = self.rgb_path.layer4(x_rgb)
-        # N x 2048 x 8 x 7 x 7
         x_pose = self.pose_path.layer3(x_pose)
-        # N x 512 x 8 x 7 x 7
+
         assert self.lateral_last is False
         return (x_rgb, x_pose)

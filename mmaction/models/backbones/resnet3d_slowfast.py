@@ -9,6 +9,50 @@ from ..registry import BACKBONES
 from .resnet3d import ResNet3d
 
 
+# Only For 3D Convolutions
+class DeConvModule(nn.Module):
+
+    def __init__(self,
+                 in_channels,
+                 out_channels,
+                 kernel_size,
+                 stride=(1, 1, 1),
+                 padding=0,
+                 bias=False,
+                 with_bn=True,
+                 with_relu=True):
+        super().__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+        self.bias = bias
+
+        self.conv = nn.ConvTranspose3d(
+            in_channels,
+            out_channels,
+            kernel_size,
+            stride=stride,
+            padding=padding,
+            bias=bias)
+        self.bn = nn.BatchNorm3d(out_channels)
+        self.relu = nn.ReLU()
+
+    def forward(self, x):
+        # x should be a 5-d tensor
+        assert len(x.shape) == 5
+        N, C, T, H, W = x.shape
+        out_shape = (N, self.out_channels, self.stride[0] * T,
+                     self.stride[1] * H, self.stride[2] * 2)
+        x = self.conv(x, output_size=out_shape)
+        if self.with_bn:
+            x = self.bn(x)
+        if self.with_relu:
+            x = self.relu(x)
+        return x
+
+
 class ResNet3dPathway(ResNet3d):
     """A pathway of Slowfast based on ResNet3d.
 
@@ -31,6 +75,8 @@ class ResNet3dPathway(ResNet3d):
             self,
             *args,
             lateral=False,
+            lateral_inv=False,
+            # By default, the lateral is pose -> rgb
             speed_ratio=8,
             channel_ratio=8,
             fusion_kernel=5,
@@ -40,25 +86,45 @@ class ResNet3dPathway(ResNet3d):
             lateral_activate=[1, 1, 1, 1],
             **kwargs):
         self.lateral = lateral
+        self.lateral_inv = lateral_inv
+        # Note:
+        # If lateral_inv is True, then the other branch has more channels and
+        # less temporal length than self.
+        # Then the speed_ratio, channel_ratio and lateral_infl will have
+        # different meanings
+
         self.speed_ratio = speed_ratio
         self.channel_ratio = channel_ratio
         self.fusion_kernel = fusion_kernel
         self.lateral_infl = lateral_infl
+
         # corresponding to input of res_layer
         self.lateral_activate = lateral_activate
         super().__init__(*args, **kwargs)
         self.inplanes = self.base_channels
-        if self.lateral:
-            self.conv1_lateral = ConvModule(
-                self.inplanes // self.channel_ratio,
-                int(self.inplanes * self.lateral_infl // self.channel_ratio),
-                kernel_size=(fusion_kernel, 1, 1),
-                stride=(self.speed_ratio, 1, 1),
-                padding=((fusion_kernel - 1) // 2, 0, 0),
-                bias=False,
-                conv_cfg=self.conv_cfg,
-                norm_cfg=None,
-                act_cfg=None)
+
+        if self.lateral and self.lateral_activate[0] == 1:
+            if self.lateral_inv:
+                self.conv1_lateral = DeConvModule(
+                    self.inplanes * self.channel_ratio,
+                    self.inplanes * self.channel_ratio // self.lateral_infl,
+                    kernel_size=(fusion_kernel, 1, 1),
+                    stride=(self.speed_ratio, 1, 1),
+                    padding=((self.fusion_kernel - 1) // 2, 0, 0),
+                    with_bn=True,
+                    with_relu=True)
+            else:
+                self.conv1_lateral = ConvModule(
+                    self.inplanes // self.channel_ratio,
+                    int(self.inplanes // self.channel_ratio *
+                        self.lateral_infl),
+                    kernel_size=(fusion_kernel, 1, 1),
+                    stride=(self.speed_ratio, 1, 1),
+                    padding=((fusion_kernel - 1) // 2, 0, 0),
+                    bias=False,
+                    conv_cfg=self.conv_cfg,
+                    norm_cfg=self.norm_cfg,
+                    act_cfg=self.act_cfg)
 
         self.lateral_connections = []
         for i in range(len(self.stage_blocks)):
@@ -68,9 +134,19 @@ class ResNet3dPathway(ResNet3d):
             if lateral and i != self.num_stages - 1:
                 # no lateral connection needed in final stage
                 lateral_name = f'layer{(i + 1)}_lateral'
-                setattr(
-                    self, lateral_name,
-                    ConvModule(
+                if self.lateral_inv:
+                    conv_module = DeConvModule(
+                        self.inplanes * self.channel_ratio,
+                        (self.inplanes * self.channel_ratio //
+                         self.lateral_infl),
+                        kernel_size=(fusion_kernel, 1, 1),
+                        stride=(self.speed_ratio, 1, 1),
+                        padding=((fusion_kernel - 1) // 2, 0, 0),
+                        bias=False,
+                        with_bn=True,
+                        with_relu=True)
+                else:
+                    conv_module = ConvModule(
                         self.inplanes // self.channel_ratio,
                         int(self.inplanes * self.lateral_infl //
                             self.channel_ratio),
@@ -79,8 +155,10 @@ class ResNet3dPathway(ResNet3d):
                         padding=((fusion_kernel - 1) // 2, 0, 0),
                         bias=False,
                         conv_cfg=self.conv_cfg,
-                        norm_cfg=None,
-                        act_cfg=None))
+                        norm_cfg=self.norm_cfg,
+                        act_cfg=self.act_cfg)
+                setattr(self, lateral_name, conv_module)
+
                 self.lateral_connections.append(lateral_name)
 
     def make_res_layer(self,
@@ -152,8 +230,12 @@ class ResNet3dPathway(ResNet3d):
                                               int) else (dilation, ) * blocks
         assert len(inflate) == blocks and len(non_local) == blocks
         if self.lateral and self.lateral_activate[idx]:
-            lateral_inplanes = int(inplanes * self.lateral_infl //
-                                   self.channel_ratio)
+            if self.lateral_inv:
+                lateral_inplanes = (
+                    inplanes * self.channel_ratio // self.lateral_infl)
+            else:
+                lateral_inplanes = int(inplanes * self.lateral_infl //
+                                       self.channel_ratio)
         else:
             lateral_inplanes = 0
 
