@@ -28,6 +28,8 @@ class DeConvModule(nn.Module):
         self.stride = stride
         self.padding = padding
         self.bias = bias
+        self.with_bn = with_bn
+        self.with_relu = with_relu
 
         self.conv = nn.ConvTranspose3d(
             in_channels,
