@@ -144,18 +144,24 @@ class MAHead(nn.Module, metaclass=ABCMeta):
             score = score[the_mask == 1]
             label = label[the_mask == 1]
             if score.shape[0] == 0:
-                loss = torch.tensor(.0).cuda()
+                loss = torch.tensor(.0, device=score.device)
             else:
                 loss = self.losses[k](score, label)
             losses[k + '_loss'] = loss
 
             if len(label.shape) == 1:
-                top_k_acc = top_k_accuracy(score.detach().cpu().numpy(),
-                                           label.detach().cpu().numpy(),
-                                           (1, 5))
-                losses[k + '_top1_acc'] = torch.tensor(
-                    top_k_acc[0], device=score.device)
-                losses[k + '_top5_acc'] = torch.tensor(
-                    top_k_acc[1], device=score.device)
+                if label.shape[0] == 0:
+                    losses[k + '_top1_acc'] = torch.tensor(
+                        0., dtype=torch.float64, device=score.device)
+                    losses[k + '_top5_acc'] = torch.tensor(
+                        0., dtype=torch.float64, device=score.device)
+                else:
+                    top_k_acc = top_k_accuracy(score.detach().cpu().numpy(),
+                                               label.detach().cpu().numpy(),
+                                               (1, 5))
+                    losses[k + '_top1_acc'] = torch.tensor(
+                        top_k_acc[0], device=score.device)
+                    losses[k + '_top5_acc'] = torch.tensor(
+                        top_k_acc[1], device=score.device)
 
         return losses
