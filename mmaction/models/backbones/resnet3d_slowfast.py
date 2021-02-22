@@ -44,7 +44,7 @@ class DeConvModule(nn.Module):
         assert len(x.shape) == 5
         N, C, T, H, W = x.shape
         out_shape = (N, self.out_channels, self.stride[0] * T,
-                     self.stride[1] * H, self.stride[2] * 2)
+                     self.stride[1] * H, self.stride[2] * W)
         x = self.conv(x, output_size=out_shape)
         if self.with_bn:
             x = self.bn(x)
