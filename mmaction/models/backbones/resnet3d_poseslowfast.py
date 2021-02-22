@@ -142,13 +142,13 @@ class ResNet3dPoseSlowFast(nn.Module):
         if hasattr(self.rgb_path, 'layer2_lateral'):
             x_pose_lateral = self.rgb_path.layer2_lateral(x_pose)
 
-        if hasattr(self.pose_path, 'layer2_lateral'):
+        if hasattr(self.pose_path, 'layer1_lateral'):
             x_rgb_lateral = self.pose_path.layer1_lateral(x_rgb)
 
         if hasattr(self.rgb_path, 'layer2_lateral'):
             x_rgb = torch.cat((x_rgb, x_pose_lateral), dim=1)
 
-        if hasattr(self.pose_path, 'layer2_lateral'):
+        if hasattr(self.pose_path, 'layer1_lateral'):
             x_pose = torch.cat((x_pose, x_rgb_lateral), dim=1)
 
         x_rgb = self.rgb_path.layer3(x_rgb)
@@ -157,13 +157,13 @@ class ResNet3dPoseSlowFast(nn.Module):
         if hasattr(self.rgb_path, 'layer3_lateral'):
             x_pose_lateral = self.rgb_path.layer3_lateral(x_pose)
 
-        if hasattr(self.pose_path, 'layer3_lateral'):
+        if hasattr(self.pose_path, 'layer2_lateral'):
             x_rgb_lateral = self.pose_path.layer2_lateral(x_rgb)
 
         if hasattr(self.rgb_path, 'layer3_lateral'):
             x_rgb = torch.cat((x_rgb, x_pose_lateral), dim=1)
 
-        if hasattr(self.pose_path, 'layer3_lateral'):
+        if hasattr(self.pose_path, 'layer2_lateral'):
             x_pose = torch.cat((x_pose, x_rgb_lateral), dim=1)
 
         x_rgb = self.rgb_path.layer4(x_rgb)
