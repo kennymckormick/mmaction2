@@ -1,7 +1,8 @@
 import torch
 import torch.nn as nn
+from mmcv.cnn import constant_init, kaiming_init
 from mmcv.runner import load_checkpoint
-from mmcv.utils import print_log
+from mmcv.utils import _BatchNorm, print_log
 
 from ...utils import get_root_logger
 from ..registry import BACKBONES
@@ -104,6 +105,12 @@ class ResNet3dPoseSlowFast(nn.Module):
     def init_weights(self):
         """Initiate the parameters either from existing checkpoint or from
         scratch."""
+        for m in self.modules():
+            if isinstance(m, nn.Conv3d):
+                kaiming_init(m)
+            elif isinstance(m, _BatchNorm):
+                constant_init(m, 1)
+
         if isinstance(self.pretrained, str):
             logger = get_root_logger()
             msg = f'load model from: {self.pretrained}'
