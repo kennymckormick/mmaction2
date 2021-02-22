@@ -50,7 +50,7 @@ class ResNet3dPoseSlowFast(nn.Module):
 
     def __init__(self,
                  pretrained,
-                 speed_ratio=3,
+                 speed_ratio=4,
                  channel_ratio=4,
                  lateral_last=False,
                  rgb_pathway=dict(
@@ -93,6 +93,10 @@ class ResNet3dPoseSlowFast(nn.Module):
         if rgb_pathway['lateral']:
             rgb_pathway['speed_ratio'] = speed_ratio
             rgb_pathway['channel_ratio'] = channel_ratio
+
+        if pose_pathway['lateral']:
+            pose_pathway['speed_ratio'] = speed_ratio
+            pose_pathway['channel_ratio'] = channel_ratio
 
         self.rgb_path = build_pathway(rgb_pathway)
         self.pose_path = build_pathway(pose_pathway)
