@@ -198,7 +198,8 @@ class PoseDataset(BaseDataset):
                  results,
                  metrics='top_k_accuracy',
                  topk=(1, 5),
-                 logger=None):
+                 logger=None,
+                 **kwargs):
         """Evaluation in rawframe dataset.
 
         Args:
