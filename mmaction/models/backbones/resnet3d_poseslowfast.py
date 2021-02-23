@@ -147,8 +147,11 @@ class ResNet3dPoseSlowFast(nn.Module):
             tuple[torch.Tensor]: The feature of the input
             samples extracted by the backbone.
         """
-        rgb_drop_path = torch.rand(1) < self.rgb_drop_path
-        pose_drop_path = torch.rand(1) < self.pose_drop_path
+        if self.training:
+            rgb_drop_path = torch.rand(1) < self.rgb_drop_path
+            pose_drop_path = torch.rand(1) < self.pose_drop_path
+        else:
+            rgb_drop_path, pose_drop_path = False, False
         # We assume base_channel for RGB and Pose are 64 and 32.
         x_rgb = self.rgb_path.conv1(imgs)
         x_rgb = self.rgb_path.maxpool(x_rgb)
@@ -205,3 +208,12 @@ class ResNet3dPoseSlowFast(nn.Module):
 
         assert self.lateral_last is False
         return (x_rgb, x_pose)
+
+    def train(self, mode=True):
+        """Set the optimization status when training."""
+        super().train(mode)
+        self.training = True
+
+    def eval(self):
+        super().eval()
+        self.training = False
