@@ -49,42 +49,49 @@ class ResNet3dPoseSlowFast(nn.Module):
                 conv1_kernel=(5, 7, 7), conv1_stride_t=1, pool1_stride_t=1)
     """
 
-    def __init__(self,
-                 pretrained,
-                 speed_ratio=4,
-                 channel_ratio=4,
-                 lateral_last=False,
-                 rgb_pathway=dict(
-                     type='resnet3d',
-                     depth=50,
-                     pretrained=None,
-                     lateral=True,
-                     lateral_infl=1,
-                     lateral_activate=[0, 0, 1, 1],
-                     base_channels=64,
-                     conv1_kernel=(1, 7, 7),
-                     conv1_stride_t=1,
-                     pool1_stride_t=1,
-                     inflate=(0, 0, 1, 1)),
-                 pose_pathway=dict(
-                     type='resnet3d',
-                     depth=50,
-                     pretrained=None,
-                     lateral=False,
-                     in_channels=25,
-                     base_channels=32,
-                     num_stages=3,
-                     out_indices=(0, 1, 2),
-                     conv1_kernel=(1, 7, 7),
-                     conv1_stride_s=1,
-                     conv1_stride_t=1,
-                     pool1_stride_s=1,
-                     pool1_stride_t=1,
-                     inflate=(0, 1, 1),
-                     spatial_strides=(2, 2, 2),
-                     temporal_strides=(1, 1, 1),
-                     dilations=(1, 1, 1),
-                     with_pool2=False)):
+    def __init__(
+        self,
+        pretrained,
+        speed_ratio=4,
+        channel_ratio=4,
+        lateral_last=False,
+        # 'rgb_detach' means use detached x_pose in rgb_branch
+        rgb_detach=False,
+        pose_detach=False,
+        # 'rgb_drop_path' means drop pose lateral in rgb_branch
+        rgb_drop_path=0,
+        pose_drop_path=0,
+        rgb_pathway=dict(
+            type='resnet3d',
+            depth=50,
+            pretrained=None,
+            lateral=True,
+            lateral_infl=1,
+            lateral_activate=[0, 0, 1, 1],
+            base_channels=64,
+            conv1_kernel=(1, 7, 7),
+            conv1_stride_t=1,
+            pool1_stride_t=1,
+            inflate=(0, 0, 1, 1)),
+        pose_pathway=dict(
+            type='resnet3d',
+            depth=50,
+            pretrained=None,
+            lateral=False,
+            in_channels=25,
+            base_channels=32,
+            num_stages=3,
+            out_indices=(0, 1, 2),
+            conv1_kernel=(1, 7, 7),
+            conv1_stride_s=1,
+            conv1_stride_t=1,
+            pool1_stride_s=1,
+            pool1_stride_t=1,
+            inflate=(0, 1, 1),
+            spatial_strides=(2, 2, 2),
+            temporal_strides=(1, 1, 1),
+            dilations=(1, 1, 1),
+            with_pool2=False)):
         super().__init__()
         self.pretrained = pretrained
         self.speed_ratio = speed_ratio
@@ -101,6 +108,12 @@ class ResNet3dPoseSlowFast(nn.Module):
 
         self.rgb_path = build_pathway(rgb_pathway)
         self.pose_path = build_pathway(pose_pathway)
+        self.rgb_detach = rgb_detach
+        self.pose_detach = pose_detach
+        assert 0 <= rgb_drop_path <= 1
+        assert 0 <= pose_drop_path <= 1
+        self.rgb_drop_path = rgb_drop_path
+        self.pose_drop_path = pose_drop_path
 
     def init_weights(self):
         """Initiate the parameters either from existing checkpoint or from
@@ -134,6 +147,8 @@ class ResNet3dPoseSlowFast(nn.Module):
             tuple[torch.Tensor]: The feature of the input
             samples extracted by the backbone.
         """
+        rgb_drop_path = torch.rand(1) < self.rgb_drop_path
+        pose_drop_path = torch.rand(1) < self.pose_drop_path
         # We assume base_channel for RGB and Pose are 64 and 32.
         x_rgb = self.rgb_path.conv1(imgs)
         x_rgb = self.rgb_path.maxpool(x_rgb)
@@ -147,10 +162,16 @@ class ResNet3dPoseSlowFast(nn.Module):
         x_pose = self.pose_path.layer1(x_pose)
 
         if hasattr(self.rgb_path, 'layer2_lateral'):
-            x_pose_lateral = self.rgb_path.layer2_lateral(x_pose)
+            feat = x_pose.detach() if self.rgb_detach else x_pose
+            x_pose_lateral = self.rgb_path.layer2_lateral(feat)
+            if rgb_drop_path:
+                x_pose_lateral = x_pose_lateral.new_zeros(x_pose_lateral.shape)
 
         if hasattr(self.pose_path, 'layer1_lateral'):
-            x_rgb_lateral = self.pose_path.layer1_lateral(x_rgb)
+            feat = x_rgb.detach() if self.pose_detach else x_rgb
+            x_rgb_lateral = self.pose_path.layer1_lateral(feat)
+            if pose_drop_path:
+                x_rgb_lateral = x_rgb_lateral.new_zeros(x_rgb_lateral.shape)
 
         if hasattr(self.rgb_path, 'layer2_lateral'):
             x_rgb = torch.cat((x_rgb, x_pose_lateral), dim=1)
@@ -162,10 +183,16 @@ class ResNet3dPoseSlowFast(nn.Module):
         x_pose = self.pose_path.layer2(x_pose)
 
         if hasattr(self.rgb_path, 'layer3_lateral'):
-            x_pose_lateral = self.rgb_path.layer3_lateral(x_pose)
+            feat = x_pose.detach() if self.rgb_detach else x_pose
+            x_pose_lateral = self.rgb_path.layer3_lateral(feat)
+            if rgb_drop_path:
+                x_pose_lateral = x_pose_lateral.new_zeros(x_pose_lateral.shape)
 
         if hasattr(self.pose_path, 'layer2_lateral'):
-            x_rgb_lateral = self.pose_path.layer2_lateral(x_rgb)
+            feat = x_rgb.detach() if self.pose_detach else x_rgb
+            x_rgb_lateral = self.pose_path.layer2_lateral(feat)
+            if pose_drop_path:
+                x_rgb_lateral = x_rgb_lateral.new_zeros(x_rgb_lateral.shape)
 
         if hasattr(self.rgb_path, 'layer3_lateral'):
             x_rgb = torch.cat((x_rgb, x_pose_lateral), dim=1)
