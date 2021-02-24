@@ -527,9 +527,10 @@ class Flip:
         self.right = right
         assert len(self.left) == len(self.right)
         self.direction = 'horizontal'
+        reverse = {}
         for k, v in label_flip.items():
-            if v not in label_flip:
-                label_flip[v] = k
+            reverse[v] = k
+        label_flip.update(reverse)
         self.label_flip = label_flip
 
     def _flip_imgs(self, imgs, modality):
