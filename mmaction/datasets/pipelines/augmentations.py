@@ -521,17 +521,17 @@ class Flip:
             "horizontal" | "vertical". Default: "horizontal".
     """
 
-    def __init__(self, flip_ratio=0.5, left=[], right=[], label_flip={}):
+    def __init__(self, flip_ratio=0.5, left=[], right=[]):
         self.flip_ratio = flip_ratio
         self.left = left
         self.right = right
         assert len(self.left) == len(self.right)
         self.direction = 'horizontal'
-        reverse = {}
-        for k, v in label_flip.items():
-            reverse[v] = k
-        label_flip.update(reverse)
-        self.label_flip = label_flip
+        # reverse = {}
+        # for k, v in label_flip.items():
+        #     reverse[v] = k
+        # label_flip.update(reverse)
+        # self.label_flip = label_flip
 
     def _flip_imgs(self, imgs, modality):
         _ = [mmcv.imflip_(img, self.direction) for img in imgs]
@@ -596,8 +596,8 @@ class Flip:
                 kp, kpscore = self._flip_kps(results['kp'], results['kpscore'],
                                              img_width)
                 results['kp'], results['kpscore'] = kp, kpscore
-        if len(self.label_flip):
-            results['label'] = self.label_flip[results['label']]
+        # if len(self.label_flip):
+        #     results['label'] = self.label_flip[results['label']]
 
         return results
 
