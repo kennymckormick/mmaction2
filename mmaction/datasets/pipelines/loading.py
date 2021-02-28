@@ -450,7 +450,8 @@ class DecordInit(object):
             results (dict): The resulting dict to be modified and passed
                 to the next transform in pipeline.
         """
-
+        if 'filename' not in results:
+            results['filename'] = results['frame_dir'] + '.mp4'
         results['video_reader'] = self._get_videoreader(results['filename'])
         results['total_frames'] = len(results['video_reader'])
         return results
@@ -731,7 +732,9 @@ class MMDecode(DecordInit, DecordDecode, RawFrameDecode, PoseDecode):
             frame_inds = results[f'{mod}_inds']
             if mod == 'RGB':
                 if self.rgb_type == 'video':
-                    video_reader = self._get_videoreader(results['frame_dir'])
+                    if 'filename' not in results:
+                        results['filename'] = results['frame_dir'] + '.mp4'
+                    video_reader = self._get_videoreader(results['filename'])
                     imgs = self._decord_load_frames(video_reader, frame_inds)
                     del video_reader
                 else:
