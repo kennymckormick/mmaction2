@@ -113,14 +113,14 @@ class MADataset(BaseDataset):
     def load_annotations(self):
         """Load annotation file to get video information."""
         assert self.ann_file.endswith('.pkl')
-        data = self.load_pkl_annotations()
-        if self.split is not None:
-            data = data[self.split]
+        return self.load_pkl_annotations()
 
     def load_pkl_annotations(self):
         video_infos = mmcv.load(self.ann_file)
-        num_videos = len(video_infos)
+        if self.split is not None:
+            video_infos = video_infos[self.split]
 
+        num_videos = len(video_infos)
         video_info0 = video_infos[0]
         assert ('filename' in video_info0) != ('frame_dir' in video_info0)
         path_key = 'filename' if 'filename' in video_info0 else 'frame_dir'
