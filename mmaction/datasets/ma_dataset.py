@@ -71,16 +71,20 @@ class MADataset(BaseDataset):
     # 1. type(label) is int: still int
     # 2. type(label) is list of int: convert to tensor
     # 3. type(label) is nd
-    def __init__(self,
-                 ann_file,
-                 pipeline,
-                 tag_categories,
-                 tag_category_nums,
-                 tag_label_types,
-                 filename_tmpl=None,
-                 random_pick_multi=False,
-                 multi2soft=False,
-                 **kwargs):
+    def __init__(
+            self,
+            ann_file,
+            pipeline,
+            tag_categories,
+            tag_category_nums,
+            tag_label_types,
+            filename_tmpl=None,
+            random_pick_multi=False,
+            multi2soft=False,
+            # If dataset has multiple splits, this is used to choose split
+            # starts from 0
+            split=None,
+            **kwargs):
         assert len(tag_categories) == len(tag_category_nums)
         self.tag_categories = tag_categories
         self.tag_category_nums = {
@@ -101,13 +105,17 @@ class MADataset(BaseDataset):
         self.start_index = kwargs.pop('start_index', 0)
         self.dataset_type = None
         self.multi2soft = multi2soft
+        self.split = split
+
         super().__init__(
             ann_file, pipeline, start_index=self.start_index, **kwargs)
 
     def load_annotations(self):
         """Load annotation file to get video information."""
         assert self.ann_file.endswith('.pkl')
-        return self.load_pkl_annotations()
+        data = self.load_pkl_annotations()
+        if self.split is not None:
+            data = data[self.split]
 
     def load_pkl_annotations(self):
         video_infos = mmcv.load(self.ann_file)
