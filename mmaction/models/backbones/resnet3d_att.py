@@ -503,6 +503,7 @@ class ResNet3dAtt(nn.Module):
             with_pool2=False,
             style='pytorch',
             frozen_stages=-1,
+            frozen_att=False,
             inflate=(0, 0, 1, 1),
             inflate_style='3x1x1',
             # BEGIN OF ATTENTION ARGS
@@ -549,6 +550,7 @@ class ResNet3dAtt(nn.Module):
         self.with_pool2 = with_pool2
         self.style = style
         self.frozen_stages = frozen_stages
+        self.frozen_att = frozen_att
 
         self.attention_plane = attention_plane
         self.attention_channel = attention_channel
@@ -917,6 +919,16 @@ class ResNet3dAtt(nn.Module):
             m = getattr(self, f'layer{i}')
             m.eval()
             for param in m.parameters():
+                param.requires_grad = False
+
+        if self.frozen_att:
+            att_res_layer = getattr(self, self.att_layer_name)
+            att_res_layer.eval()
+            for param in att_res_layer.parameters():
+                param.requires_grad = False
+
+            self.att_head.eval()
+            for param in self.att_head.parameters():
                 param.requires_grad = False
 
     @staticmethod
