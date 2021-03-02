@@ -20,6 +20,7 @@ class RepeatDataset:
         self.times = times
         self.power = dataset.power
         self.sample_by_class = dataset.sample_by_class
+        self.video_infos = dataset.video_infos
         self._ori_len = len(self.dataset)
 
     def __getitem__(self, idx):
