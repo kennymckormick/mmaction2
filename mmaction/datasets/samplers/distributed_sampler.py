@@ -101,13 +101,13 @@ class DistributedPowerSampler(_DistributedSampler):
         # We need to get video_infos_by_class by hand
         video_infos_by_class = defaultdict(list)
         key = 'action' if 'action' in self.dataset.video_infos[0] else 'label'
-        for item in self.video_infos:
+        for item in self.dataset.video_infos:
             idx = item[key]
             video_infos_by_class[idx].append(item)
 
         probs = [
-            len(video_infos_by_class[x[key]]) / len(self.video_infos)
-            for x in self.video_infos
+            len(video_infos_by_class[x[key]]) / len(self.dataset.video_infos)
+            for x in self.dataset.video_infos
         ]
         probs = [prob**self.power for prob in probs]
 
