@@ -1,4 +1,5 @@
 import io
+import math
 import os
 import os.path as osp
 import shutil
@@ -248,6 +249,39 @@ class SampleFrames:
                     f'out_of_bound_opt={self.out_of_bound_opt}, '
                     f'test_mode={self.test_mode})')
         return repr_str
+
+
+@PIPELINES.register_module()
+class SampleFramesTW:
+
+    def __init__(self, clip_len, frame_interval=1):
+        self.clip_len = clip_len
+        self.frame_interval = frame_interval
+        self.temporal_window = clip_len * frame_interval
+
+    def _get_clips(self, num_frames):
+        num_windows = math.ceil(num_frames / self.temporal_window)
+        inds = []
+        for i in range(num_windows):
+            offset = i * self.temporal_window
+            clip = np.arange(self.frame_interval // 2, self.temporal_window,
+                             self.frame_interval) + offset
+            inds.append(clip)
+        return num_windows, np.concatenate(inds)
+
+    def __call__(self, results):
+        num_frames = results['total_frames']
+
+        num_clips, inds = self._get_clips(num_frames)
+        inds = np.mod(inds, num_frames)
+        start_index = results['start_index']
+        inds = inds + start_index
+
+        results['frame_inds'] = inds.astype(np.int)
+        results['clip_len'] = self.clip_len
+        results['frame_interval'] = self.frame_interval
+        results['num_clips'] = num_clips
+        return results
 
 
 @PIPELINES.register_module()
