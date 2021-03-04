@@ -446,6 +446,7 @@ class ResNet3dAtt(nn.Module):
             Default: 2.
         pool1_stride_t (int): Temporal stride of the first pooling layer.
             Default: 2.
+        with_pool1 (bool): Whether to use pool1. Default: True.
         with_pool2 (bool): Whether to use pool2. Default: True.
         style (str): `pytorch` or `caffe`. If set to "pytorch", the stride-two
             layer is the 3x3 conv layer, otherwise the stride-two layer is
@@ -500,6 +501,7 @@ class ResNet3dAtt(nn.Module):
             conv1_stride_t=1,
             pool1_kernel_t=1,
             pool1_stride_t=1,
+            with_pool1=True,
             with_pool2=False,
             style='pytorch',
             frozen_stages=-1,
@@ -547,6 +549,7 @@ class ResNet3dAtt(nn.Module):
         self.conv1_stride_t = conv1_stride_t
         self.pool1_kernel_t = pool1_kernel_t
         self.pool1_stride_t = pool1_stride_t
+        self.with_pool1 = with_pool1
         self.with_pool2 = with_pool2
         self.style = style
         self.frozen_stages = frozen_stages
@@ -986,7 +989,8 @@ class ResNet3dAtt(nn.Module):
             samples extracted by the backbone.
         """
         x = self.conv1(x)
-        x = self.maxpool(x)
+        if self.with_pool1:
+            x = self.maxpool(x)
         x = self.layer1(x)
         x = self.layer2(x)
         x = self.layer3(x)
