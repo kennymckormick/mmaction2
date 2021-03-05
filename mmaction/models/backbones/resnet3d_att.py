@@ -15,6 +15,16 @@ from ...utils import get_root_logger
 from ..registry import BACKBONES
 
 
+def downsample_basic_block(x, planes, stride):
+    out = F.avg_pool3d(x, kernel_size=stride, stride=stride)
+    zero_pads = torch.zeros(
+        out.size(0), planes - out.size(1), out.size(2), out.size(3),
+        out.size(4))
+    zero_pads = zero_pads.to(out.device)
+    out = torch.cat([out.data, zero_pads], dim=1)
+    return out
+
+
 def conv3x3x3(in_planes, out_planes):
     """3x3x3 convolution with padding."""
     return Conv3d(in_planes, out_planes, kernel_size=3, padding=1, bias=False)
@@ -735,16 +745,6 @@ class ResNet3dAtt(nn.Module):
                     norm_cfg=norm_cfg,
                     act_cfg=None)
             else:
-
-                def downsample_basic_block(x, planes, stride):
-                    out = F.avg_pool3d(x, kernel_size=stride, stride=stride)
-                    zero_pads = torch.zeros(
-                        out.size(0), planes - out.size(1), out.size(2),
-                        out.size(3), out.size(4))
-                    zero_pads = zero_pads.to(out.device)
-                    out = torch.cat([out.data, zero_pads], dim=1)
-                    return out
-
                 downsample = partial(
                     downsample_basic_block,
                     planes=planes * block.expansion,
