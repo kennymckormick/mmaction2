@@ -1,4 +1,8 @@
+from functools import partial
+
+import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.utils.checkpoint as cp
 from mmcv.cnn import (ConvModule, NonLocal3d, build_activation_layer,
                       constant_init, kaiming_init)
@@ -503,6 +507,7 @@ class ResNet3dAtt(nn.Module):
             pool1_stride_t=1,
             with_pool1=True,
             with_pool2=False,
+            shortcut_type='B',
             style='pytorch',
             frozen_stages=-1,
             frozen_att=False,
@@ -551,6 +556,7 @@ class ResNet3dAtt(nn.Module):
         self.pool1_stride_t = pool1_stride_t
         self.with_pool1 = with_pool1
         self.with_pool2 = with_pool2
+        self.shortcut_type = shortcut_type
         self.style = style
         self.frozen_stages = frozen_stages
         self.frozen_att = frozen_att
@@ -599,6 +605,7 @@ class ResNet3dAtt(nn.Module):
                 spatial_stride=spatial_stride,
                 temporal_stride=temporal_stride,
                 dilation=dilation,
+                shortcut_type=self.shortcut_type,
                 style=self.style,
                 norm_cfg=self.norm_cfg,
                 conv_cfg=self.conv_cfg,
@@ -622,6 +629,7 @@ class ResNet3dAtt(nn.Module):
                     spatial_stride=1,
                     temporal_stride=1,
                     dilation=1,
+                    shortcut_type=self.shortcut_type,
                     style=self.style,
                     norm_cfg=self.norm_cfg,
                     conv_cfg=self.conv_cfg,
@@ -659,6 +667,7 @@ class ResNet3dAtt(nn.Module):
                        spatial_stride=1,
                        temporal_stride=1,
                        dilation=1,
+                       shortcut_type='B',
                        style='pytorch',
                        inflate=1,
                        inflate_style='3x1x1',
@@ -713,16 +722,33 @@ class ResNet3dAtt(nn.Module):
             non_local, int) else (non_local, ) * blocks
         assert len(inflate) == blocks and len(non_local) == blocks
         downsample = None
+
         if spatial_stride != 1 or inplanes != planes * block.expansion:
-            downsample = ConvModule(
-                inplanes,
-                planes * block.expansion,
-                kernel_size=1,
-                stride=(temporal_stride, spatial_stride, spatial_stride),
-                bias=False,
-                conv_cfg=conv_cfg,
-                norm_cfg=norm_cfg,
-                act_cfg=None)
+            if shortcut_type == 'B':
+                downsample = ConvModule(
+                    inplanes,
+                    planes * block.expansion,
+                    kernel_size=1,
+                    stride=(temporal_stride, spatial_stride, spatial_stride),
+                    bias=False,
+                    conv_cfg=conv_cfg,
+                    norm_cfg=norm_cfg,
+                    act_cfg=None)
+            else:
+
+                def downsample_basic_block(x, planes, stride):
+                    out = F.avg_pool3d(x, kernel_size=stride, stride=stride)
+                    zero_pads = torch.zeros(
+                        out.size(0), planes - out.size(1), out.size(2),
+                        out.size(3), out.size(4))
+                    zero_pads = zero_pads.to(out.device)
+                    out = torch.cat([out.data, zero_pads], dim=1)
+                    return out
+
+                downsample = partial(
+                    downsample_basic_block,
+                    planes=planes * block.expansion,
+                    stride=(temporal_stride, spatial_stride, spatial_stride))
 
         layers = []
         layers.append(
