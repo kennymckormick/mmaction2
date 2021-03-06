@@ -25,6 +25,12 @@ class MARecognizer3D(BaseRecognizer):
             neck=neck,
             train_cfg=train_cfg,
             test_cfg=test_cfg)
+
+        # We use featonly only for those small models, so it's safe
+        self.featonly = False
+        if 'featonly' in test_cfg:
+            self.featonly = test_cfg['featonly']
+
         self.attr_names = attr_names
         self.avg_pool = nn.AdaptiveAvgPool3d(1)
 
@@ -70,6 +76,7 @@ class MARecognizer3D(BaseRecognizer):
         imgs = imgs.reshape((-1, ) + imgs.shape[2:])
 
         if self.max_testing_views is not None:
+            assert not self.featonly
             total_views = imgs.shape[0]
             assert num_segs == total_views, (
                 'max_testing_views is only compatible '
@@ -93,6 +100,9 @@ class MARecognizer3D(BaseRecognizer):
             x = self.extract_feat(imgs)
             x = self.avg_pool(x)
             x = x.reshape(x.shape[:2])
+
+            if self.featonly:
+                return {'feat': x}
 
             cls_score = self.cls_head(x)
 
