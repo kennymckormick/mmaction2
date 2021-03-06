@@ -76,7 +76,6 @@ class MARecognizer3D(BaseRecognizer):
         imgs = imgs.reshape((-1, ) + imgs.shape[2:])
 
         if self.max_testing_views is not None:
-            assert not self.featonly
             total_views = imgs.shape[0]
             assert num_segs == total_views, (
                 'max_testing_views is only compatible '
@@ -101,7 +100,7 @@ class MARecognizer3D(BaseRecognizer):
             x = self.avg_pool(x)
             x = x.reshape(x.shape[:2])
 
-            if self.featonly:
+            if hasattr(self, 'featonly') and self.featonly:
                 return {'feat': x}
 
             cls_score = self.cls_head(x)
