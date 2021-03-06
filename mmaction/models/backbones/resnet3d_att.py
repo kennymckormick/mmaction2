@@ -16,7 +16,7 @@ from ..registry import BACKBONES
 
 
 def downsample_basic_block(x, planes, stride):
-    out = F.avg_pool3d(x, kernel_size=stride, stride=stride)
+    out = F.avg_pool3d(x, kernel_size=stride, stride=stride, ceil_mode=True)
     zero_pads = torch.zeros(
         out.size(0), planes - out.size(1), out.size(2), out.size(3),
         out.size(4))
@@ -639,7 +639,7 @@ class ResNet3dAtt(nn.Module):
                     spatial_stride=1,
                     temporal_stride=1,
                     dilation=1,
-                    shortcut_type=self.shortcut_type,
+                    shortcut_type='B',
                     style=self.style,
                     norm_cfg=self.norm_cfg,
                     conv_cfg=self.conv_cfg,
