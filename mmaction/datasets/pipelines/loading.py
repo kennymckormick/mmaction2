@@ -604,6 +604,8 @@ class PoTionDecode(object):
 
         bytes = self.file_client.get(results['filename'])
         img = np.load(io.BytesIO(bytes))
+        img = img.reshape((-1, ) + img.shape[2:]).transpose((1, 2, 0))
+
         results['imgs'] = [img]
         results['original_shape'] = img.shape[:2]
         results['img_shape'] = img.shape[:2]
