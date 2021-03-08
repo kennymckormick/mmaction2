@@ -59,7 +59,7 @@ class PoseDataset(BaseDataset):
 
         modality = 'Pose'
         if 'modality' in kwargs:
-            modality = kwargs['modality']
+            modality = kwargs.pop('modality')
 
         super().__init__(
             ann_file, pipeline, start_index=0, modality=modality, **kwargs)

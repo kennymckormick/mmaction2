@@ -606,7 +606,7 @@ class PoTionDecode(object):
         img = np.load(io.BytesIO(bytes))
         img = img.reshape((-1, ) + img.shape[2:]).transpose((1, 2, 0))
 
-        results['imgs'] = [img]
+        results['imgs'] = [img.astype(np.float32)]
         results['original_shape'] = img.shape[:2]
         results['img_shape'] = img.shape[:2]
 
