@@ -57,8 +57,12 @@ class PoseDataset(BaseDataset):
             if arg in kwargs:
                 add_kwargs[arg] = kwargs.pop(arg)
 
+        modality = 'Pose'
+        if 'modality' in kwargs:
+            modality = kwargs['modality']
+
         super().__init__(
-            ann_file, pipeline, start_index=0, modality='Pose', **kwargs)
+            ann_file, pipeline, start_index=0, modality=modality, **kwargs)
 
         # box_thre, which should be a string
         self.box_thre = None
